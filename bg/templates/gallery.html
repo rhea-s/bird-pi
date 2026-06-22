@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Recently Heard — a live plate-book</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header class="masthead">
+    <p class="eyebrow">@ bird-hampton drive</p>
+    <h1>Recently Heard</h1>
+    <p class="dateline" id="dateline"></p>
+    <div class="rule"></div>
+  </header>
+
+  <main>
+    {% if error %}
+      <p class="notice" id="notice">Can't reach BirdNET-Go. Check that it's running and that
+      <code>base_url</code> in config.yaml points to it. <span class="detail">{{ error }}</span></p>
+    {% elif not entries %}
+      <p class="notice" id="notice">No detections yet. Once a bird is heard, its plate appears here.</p>
+    {% endif %}
+
+    <section class="plates" id="plates">
+      {% for e in entries %}
+      <article class="plate">
+        <div class="frame">
+          {% if e.plate_number %}<span class="plateno">No. {{ e.plate_number }}</span>{% endif %}
+          <div class="art">
+            {% if e.plate_url %}
+              <img src="{{ e.plate_url }}" alt="{{ e.common_name }}" loading="lazy">
+            {% else %}
+              <div class="uncollected"><span>Plate not yet collected</span></div>
+            {% endif %}
+          </div>
+        </div>
+        <div class="caption">
+          <h2>{{ e.common_name }}</h2>
+          <p class="latin">{{ e.scientific_name }}</p>
+          <p class="heard"><span class="lbl">Last heard</span> <span class="when">{{ e.last_heard_text }}</span></p>
+        </div>
+      </article>
+      {% endfor %}
+    </section>
+  </main>
+
+  <footer><div class="rule"></div><p>BirdNET-Go &middot; plates after J. J. Audubon's <i>Birds of America</i></p></footer>
+
+  <script>
+    const REFRESH = {{ refresh }} * 1000;
+
+    function stamp() {
+      const d = new Date();
+      const t = d.toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+      document.getElementById('dateline').textContent = 'Updated ' + t;
+    }
+
+    function card(e) {
+      const art = e.plate_url
+        ? `<img src="${e.plate_url}" alt="${e.common_name}" loading="lazy">`
+        : `<div class="uncollected"><span>Plate not yet collected</span></div>`;
+      const no = e.plate_number ? `<span class="plateno">No. ${e.plate_number}</span>` : '';
+      return `<article class="plate"><div class="frame">${no}
+        <div class="art">${art}</div></div>
+        <div class="caption"><h2>${e.common_name}</h2>
+        <p class="latin">${e.scientific_name}</p>
+        <p class="heard"><span class="lbl">Last heard</span> <span class="when">${e.last_heard_text}</span></p>
+        </div></article>`;
+    }
+
+    async function refresh() {
+      try {
+        const r = await fetch('/api/gallery.json', {cache: 'no-store'});
+        const data = await r.json();
+        const grid = document.getElementById('plates');
+        const notice = document.getElementById('notice');
+        if (data.error) { return; }
+        if (notice && data.entries.length) notice.remove();
+        grid.style.opacity = 0.35;
+        grid.innerHTML = data.entries.map(card).join('');
+        requestAnimationFrame(() => { grid.style.opacity = 1; });
+        stamp();
+      } catch (_) { /* keep last good render */ }
+    }
+
+    stamp();
+    setInterval(refresh, REFRESH);
+  </script>
+</body>
+</html>

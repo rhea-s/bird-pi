@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+illustrations/*
+!illustrations/.gitkeep
+eink_out.png

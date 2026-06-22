@@ -1,0 +1,12 @@
+# Optional: real Audubon plate numbers, shown as Roman numerals on each plate.
+# Left empty on purpose — fill in only numbers you've verified, so the engraved
+# "No. ___" is always authentic. Anything not listed simply omits the number.
+#
+# Format: scientific name (lowercase) -> plate number in Birds of America.
+# Example (verify before trusting):
+#
+# plate_numbers:
+#   cardinalis cardinalis: 159
+#   cyanocitta cristata: 102
+
+plate_numbers: {}

@@ -1,0 +1,44 @@
+# birdgallery configuration
+# Copy/edit freely. Every key has a sane default in bg/config.py, so you only
+# need to set what differs for your setup.
+
+birdnet:
+  # Where BirdNET-Go's web server is reachable from this machine.
+  # If birdgallery runs ON the Pi, localhost is fine. If it runs on your
+  # laptop, point at the Pi, e.g. http://birdpi.local:8080
+  base_url: "http://raspbirdy-pi.local:8080"
+  # BirdNET-Go writes timestamps in the Pi's local time. Leave true unless
+  # your instance is configured for UTC.
+  timezone_is_local: true
+  # Seconds to wait on the API before giving up.
+  timeout: 8
+
+gallery:
+  # How many recent species to show.
+  limit: 12
+  # Optional: hide species whose latest detection confidence is below this.
+  # Only applied if the API exposes a confidence field; otherwise ignored.
+  min_confidence: 0.0
+
+plates:
+  # Folder holding cached illustrations, named <genus_species>.jpg
+  dir: "normalized_plates"
+  # Search phrase appended to the species name when fetching from Wikimedia
+  # Commons (see fetch_plates.py). Tuned to surface the engraved plates.
+  fetch_query_suffix: "John James Audubon Birds of America"
+
+web:
+  host: "0.0.0.0"          # 0.0.0.0 so phones/laptops on your LAN can reach it
+  port: 8000
+  refresh_seconds: 60      # how often the page re-pulls detections
+
+eink:
+  width: 800               # panel resolution in px
+  height: 480
+  palette: "bw"            # bw | gray16 | acep7  (acep7 = 7-colour panels)
+  columns: 3               # gallery grid
+  rows: 2
+  driver: "save"           # save | waveshare | inky   (start with "save")
+  output_png: "eink_out.png"
+  # Only used when driver: waveshare. Match your panel's driver module.
+  waveshare_module: "waveshare_epd.epd7in5_V2"

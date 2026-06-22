@@ -1,0 +1,9 @@
+requests>=2.28
+Flask>=3.0
+Pillow>=10.0
+PyYAML>=6.0
+
+# E-ink display libraries are panel-specific and optional — install only the
+# one for your hardware (not needed for driver: save):
+#   Waveshare:  pip install waveshare-epd   (or use their vendor library)
+#   Inky:       pip install inky[rpi]
