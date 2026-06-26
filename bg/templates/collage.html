@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>The Collage — recently heard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    /* The collage borrows every token from style.css; it only adds the
+       justified-row machinery and a lighter caption scale. No plate-mark here —
+       the cutouts sit straight on the paper, full colour, as if pinned. */
+    main { max-width: 96rem; margin: 0 auto; }
+
+    .collage { margin: 2.2rem auto 0; min-height: 40vh; }
+    .row { display: flex; align-items: flex-start; margin-bottom: clamp(1rem, 2.2vw, 2rem); }
+
+    .bird {
+      display: flex; flex-direction: column;
+      opacity: 0; transform: translateY(8px);
+      animation: settle .5s ease forwards;
+    }
+    .bird .cut { display: grid; place-items: end center; }
+    .bird .cut img {
+      width: 100%; height: 100%; object-fit: contain; object-position: bottom;
+      filter: drop-shadow(0 4px 5px rgba(60, 48, 28, .18));
+      transition: transform .25s ease, filter .25s ease;
+    }
+    .bird:hover .cut img {
+      transform: translateY(-4px);
+      filter: drop-shadow(0 8px 9px rgba(60, 48, 28, .24));
+    }
+
+    /* reuse .caption typography from style.css, just a touch smaller & tighter */
+    .bird .caption { padding: .7rem .35rem 0; }
+    .bird .caption h2 { font-size: 1.16rem; letter-spacing: .12em; text-indent: .12em; }
+    .bird .latin { font-size: .98rem; }
+    .bird .heard { margin-top: .45rem; }
+
+    @keyframes settle { to { opacity: 1; transform: none; } }
+    @media (prefers-reduced-motion: reduce) {
+      .bird { animation: none; opacity: 1; transform: none; }
+      .bird .cut img, .bird:hover .cut img { transition: none; transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="masthead">
+    <p class="eyebrow">@ bird-hampton drive &middot; the collage</p>
+    <h1>Backyard Visitors</h1>
+    <p class="dateline" id="dateline"></p>
+    <div class="rule"></div>
+  </header>
+
+  <main>
+    <p class="notice" id="notice">Gathering today&rsquo;s visitors&hellip;</p>
+    <section class="collage" id="collage" aria-label="Birds heard today"></section>
+  </main>
+
+  <footer><div class="rule"></div><p>BirdNET-Go &middot; illustrations pinned on the page like a specimen drawer</p></footer>
+
+  <script id="seed" type="application/json">{{ entries | tojson }}</script>
+  <script>
+    const REFRESH = {{ refresh }} * 1000;
+    const GAP = 18;
+    let items = [];   // {e, asp}
+
+    function stamp() {
+      const t = new Date().toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+      document.getElementById('dateline').textContent = 'Updated ' + t;
+    }
+
+    function targetRowHeight() {
+      const w = window.innerWidth;
+      if (w < 560) return 150;
+      if (w < 1000) return 200;
+      return 244;
+    }
+
+    function metaLine(e) {
+      const hasCount = e.count_today !== null && e.count_today !== undefined;
+      if (!hasCount && !e.rarity) return '';
+      const parts = [];
+      if (hasCount) parts.push(`<span class="tally"><span class="n">${e.count_today}</span>&times;</span>`);
+      if (e.rarity) {
+        if (hasCount) parts.push('<span class="sep">&middot;</span>');
+        parts.push(`<span class="rarity rarity--${e.rarity_level || 'unknown'}">${e.rarity}</span>`);
+      }
+      return `<p class="meta">${parts.join('')}</p>`;
+    }
+
+    function figure(it, w, h) {
+      const e = it.e;
+      const fig = document.createElement('figure');
+      fig.className = 'bird';
+      fig.style.width = w + 'px';
+      fig.innerHTML =
+        `<div class="cut" style="height:${h}px"><img src="${e.cutout_url}" alt="${e.common_name}"></div>
+         <figcaption class="caption">
+           <h2>${e.common_name}</h2>
+           <p class="latin">${e.scientific_name}</p>
+           <p class="heard"><span class="lbl">Last heard</span> <span class="when">${e.last_heard_text}</span></p>
+           ${metaLine(e)}
+         </figcaption>`;
+      return fig;
+    }
+
+    // Justified rows: fill the width at a target height, the last row left-aligned.
+    function layout() {
+      const c = document.getElementById('collage');
+      const W = c.clientWidth;
+      if (!W || !items.length) return;
+      c.innerHTML = '';
+      const target = targetRowHeight();
+      let row = [], sumAsp = 0;
+
+      const flush = (last) => {
+        const avail = W - GAP * (row.length - 1);
+        let h = avail / sumAsp;
+        if (last) h = Math.min(h, target);     // don't blow up a lonely last row
+        h = Math.min(h, target * 1.5);
+        const rowEl = document.createElement('div');
+        rowEl.className = 'row';
+        rowEl.style.gap = GAP + 'px';
+        row.forEach((it, i) => {
+          const f = figure(it, Math.round(h * it.asp), Math.round(h));
+          f.style.animationDelay = (i * 0.03) + 's';
+          rowEl.appendChild(f);
+        });
+        c.appendChild(rowEl);
+        row = []; sumAsp = 0;
+      };
+
+      items.forEach(it => {
+        row.push(it); sumAsp += it.asp;
+        if ((W - GAP * (row.length - 1)) / sumAsp < target) flush(false);
+      });
+      if (row.length) flush(true);
+    }
+
+    // Preload to learn each cutout's aspect ratio, then lay out.
+    function ingest(entries) {
+      const notice = document.getElementById('notice');
+      if (!entries.length) {
+        notice.textContent = 'No visitors with illustrations yet. They appear here as plates are generated.';
+        notice.style.display = '';
+        document.getElementById('collage').innerHTML = '';
+        items = [];
+        return;
+      }
+      Promise.all(entries.map(e => new Promise(res => {
+        const im = new Image();
+        im.onload = () => res({ e, asp: im.naturalWidth / im.naturalHeight });
+        im.onerror = () => res(null);
+        im.src = e.cutout_url;
+      }))).then(loaded => {
+        items = loaded.filter(Boolean);
+        notice.style.display = 'none';
+        layout();
+        stamp();
+      });
+    }
+
+    async function refresh() {
+      try {
+        const r = await fetch('/api/collage.json', { cache: 'no-store' });
+        const data = await r.json();
+        if (!data.error) ingest(data.entries);
+      } catch (_) { /* keep last good render */ }
+    }
+
+    // resize: re-justify with the aspects we already have (no refetch)
+    let rz;
+    window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(layout, 150); });
+
+    ingest(JSON.parse(document.getElementById('seed').textContent));
+    stamp();
+    setInterval(refresh, REFRESH);
+  </script>
+</body>
+</html>

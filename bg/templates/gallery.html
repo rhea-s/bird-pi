@@ -35,6 +35,7 @@
           {% else %}
             <div class="uncollected"><span>Plate not yet collected</span></div>
           {% endif %}
+          {% if e.cutout_url %}<img class="plate-cutout" src="{{ e.cutout_url }}" alt="" aria-hidden="true" loading="lazy">{% endif %}
         </div>
         <div class="caption">
           <h2>{{ e.common_name }}</h2>
@@ -77,9 +78,12 @@
       const art = e.plate_url
         ? `<img src="${e.plate_url}" alt="${e.common_name}" loading="lazy">`
         : `<div class="uncollected"><span>Plate not yet collected</span></div>`;
+      const cut = e.cutout_url
+        ? `<img class="plate-cutout" src="${e.cutout_url}" alt="" aria-hidden="true" loading="lazy">`
+        : '';
       const no = e.plate_number ? `<span class="plateno">No. ${e.plate_number}</span>` : '';
       return `<article class="plate">${no}
-        <div class="art">${art}</div>
+        <div class="art">${art}${cut}</div>
         <div class="caption"><h2>${e.common_name}</h2>
         <p class="latin">${e.scientific_name}</p>
         <p class="heard"><span class="lbl">Last heard</span> <span class="when">${e.last_heard_text}</span></p>

@@ -171,3 +171,34 @@ footer p {
 @media (prefers-reduced-motion: reduce) {
   .plates { transition: none; }
 }
+/* ---- generated illustration, perched at the plate's lower-right ---------- *
+   Her own cutout of the same species steps out of the historical engraving,
+   overlapping the plate and spilling past its lower-right corner. The plate is
+   pinned to its 3:4 box so a tall plate can never bleed onto the caption; only
+   the cutout is allowed past the box. No animation — the page stays still. */
+.art { position: relative; overflow: visible; }
+
+/* pin the plate (or the empty-plate placeholder) exactly to the box */
+.art > img:not(.plate-cutout),
+.art > .uncollected {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+}
+
+/* the cutout — the one thing allowed to escape the frame */
+.art img.plate-cutout {
+  position: absolute;
+  right: -15%; bottom: -8%;     /* the offset — nudge to taste */
+  width: 70%;                  /* sized up; was 46% */
+  height: auto;
+  max-width: none; max-height: none;
+  object-fit: contain;
+  mix-blend-mode: normal;      /* keep the illustration vivid, not blended */
+  pointer-events: none;
+  z-index: 2;
+  filter: drop-shadow(0 5px 7px rgba(60, 48, 28, .30));
+}
+
+@media (max-width: 420px) {
+  .art img.plate-cutout { width: 50%; right: -5%; bottom: -4%; }
+}
