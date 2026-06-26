@@ -196,6 +196,7 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
 .tree-stage[data-debug] .dbg-grid { display: block; }
 .tree-stage[data-debug] .bird { cursor: grab; outline: 1px dashed rgba(140,74,58,.5); }
 .tree-stage[data-debug] .bird:active { cursor: grabbing; }
+.tree-stage:not([data-debug]) .bird--has-song { cursor: pointer; }
 .bird-rank { position: absolute; z-index: 60; transform: translate(-50%, -50%);
   font: 600 .62rem/1 var(--mono); color: #fff; background: var(--rare);
   padding: .15rem .3rem; border-radius: 2px; pointer-events: none; display: none; }
@@ -219,7 +220,7 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
 </button>
 
 <header class="masthead">
-  <p class="eyebrow">stay and listen for a while</p>
+  <p class="eyebrow"></p>
   <h1>The Oak</h1>
   <p class="dateline">
     <span id="dateline">live</span>
@@ -406,8 +407,12 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
       e._img = img;   // so autoplay can mark this bird as singing
 
       if (!debug) {
+        if (e.song_url) img.classList.add("bird--has-song");
         img.addEventListener("mouseenter", function () { showCallout(e); });
-        img.addEventListener("mouseleave", hideCallout);
+        img.addEventListener("mouseleave", function () {
+          if (clickCurrent !== e) hideCallout();   // keep the name up while it sings
+        });
+        img.addEventListener("click", function () { playOne(e); });
       }
 
       if (debug && e.rank != null && e.rank >= 0) {
@@ -560,6 +565,7 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
     if (fadeRAF)   { cancelAnimationFrame(fadeRAF); fadeRAF = null; }
   }
   function start() {
+    stopClickPlay();          // the tour takes over from any single-bird play
     var list = singable();
     if (!list.length) { flashNoSongs(); return; }
     queue = shuffle(list);
@@ -604,6 +610,38 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
   audio.addEventListener("ended", function () { if (playing) fadeAndNext(); });
   audio.addEventListener("error", function () { if (playing) scheduleNext(); });
   btn.addEventListener("click", function () { playing ? stop() : start(); });
+
+  // --- click a single bird to hear just its song (when not autoplaying) ---
+  // A deliberate click plays that one bird in full — no tour clip-cap — with the
+  // same rising notes, oxblood glow, and pinned callout. Click it again, or
+  // click another singer, to stop. Ignored while the tour runs (the tour owns
+  // the stage) and in debug, where a click is the start of a drag.
+  var clickAudio = new Audio();
+  clickAudio.preload = "none";
+  var clickCurrent = null;
+
+  function stopClickPlay() {
+    try { clickAudio.pause(); } catch (e) {}
+    clickCurrent = null;
+    stopNotes(); markSinging(null); hideCallout();
+  }
+  function playOne(e) {
+    if (playing) return;                         // the tour owns the stage
+    if (!e || !e.song_url) return;               // silent bird: ignore the click
+    if (clickCurrent === e) { stopClickPlay(); return; }   // same bird -> toggle off
+    stopClickPlay();
+    clickCurrent = e;
+    try {
+      clickAudio.src = e.song_url;
+      clickAudio.currentTime = 0;
+      clickAudio.volume = 1;
+    } catch (err) { stopClickPlay(); return; }
+    var p = clickAudio.play();
+    if (p && p.catch) p.catch(function () { stopClickPlay(); });
+    startNotes(e); markSinging(e); showCallout(e);
+  }
+  clickAudio.addEventListener("ended", stopClickPlay);
+  clickAudio.addEventListener("error", function () { if (clickCurrent) stopClickPlay(); });
 
   // --- boot --------------------------------------------------------------
   var d = new Date();

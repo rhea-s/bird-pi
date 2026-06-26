@@ -37,6 +37,7 @@
       {% for e in entries %}
       <article class="plate">
         {% if e.plate_number %}<span class="plateno">No. {{ e.plate_number }}</span>{% endif %}
+        {% if e.is_new_today %}<span class="new-today" title="First heard today"><span class="star">✦</span><span class="lbl">New</span></span>{% endif %}
         <div class="art">
           {% if e.plate_url %}
             <img src="{{ e.plate_url }}" alt="{{ e.common_name }}" loading="lazy">
@@ -90,7 +91,10 @@
         ? `<img class="plate-cutout" src="${e.cutout_url}" alt="" aria-hidden="true" loading="lazy">`
         : '';
       const no = e.plate_number ? `<span class="plateno">No. ${e.plate_number}</span>` : '';
-      return `<article class="plate">${no}
+      const newToday = e.is_new_today
+        ? `<span class="new-today" title="First heard today"><span class="star">✦</span><span class="lbl">New</span></span>`
+        : '';
+      return `<article class="plate">${no}${newToday}
         <div class="art">${art}${cut}</div>
         <div class="caption"><h2>${e.common_name}</h2>
         <p class="latin">${e.scientific_name}</p>

@@ -31,6 +31,7 @@ class GalleryEntry:
     hourly: Optional[list[int]] = None  # 24 ints, today's detections by local hour
     rarity: Optional[str] = None       # display label, e.g. "Rare"
     rarity_level: Optional[str] = None  # slug for styling: very-common…very-rare
+    is_new_today: bool = False          # first ever heard today (all detections are today's)
 
 
 # Verified Audubon plate numbers, scientific_name -> integer.
@@ -95,5 +96,12 @@ def build_gallery(cfg: cfgmod.Config, *, plate_url_for=None) -> list[GalleryEntr
             hourly=sp.hourly,
             rarity=sp.rarity,
             rarity_level=sp.rarity_level,
+            # True when every all-time detection is from today — i.e. first ever heard.
+            # Falls back gracefully if the API doesn't supply is_new_today directly.
+            is_new_today=(
+                getattr(sp, 'is_new_today', None)
+                if getattr(sp, 'is_new_today', None) is not None
+                else bool(sp.count_today and sp.count and sp.count == sp.count_today)
+            ),
         ))
     return entries

@@ -427,5 +427,31 @@
     "xc_id": "1084543",
     "xc_url": "https://xeno-canto.org/1084543",
     "fetched": 1782493212
+  },
+  "dryobates pubescens": {
+      "file": "dryobates_pubescens.mp3",
+      "song_url": "/songs/dryobates_pubescens.mp3",
+      "type": "call, song",
+      "q": "A",
+      "length": "0:23",
+      "credit": "Thomas G. Graves",
+      "song_credit": "Thomas G. Graves · XC89855",
+      "licence": "https://creativecommons.org/licenses/by-nc-nd/2.5/",
+      "xc_id": "89855",
+      "xc_url": "https://xeno-canto.org/89855",
+      "fetched": 1782494713
+  },
+  "sialia sialis": {
+      "file": "sialia_sialis.mp3",
+      "song_url": "/songs/sialia_sialis.mp3",
+      "type": "song",
+      "q": "A",
+      "length": "0:10",
+      "credit": "Robin Carter",
+      "song_credit": "Robin Carter · XC1374",
+      "licence": "https://creativecommons.org/licenses/by-nc-nd/2.5/",
+      "xc_id": "1374",
+      "xc_url": "https://xeno-canto.org/1374",
+      "fetched": 1782505502
   }
 }

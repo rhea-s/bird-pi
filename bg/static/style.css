@@ -92,6 +92,28 @@ h1 {
   font-variant: small-caps;
 }
 
+/* new-today — a tipped-in archival slip, like a museum mount label affixed to
+   the plate's upper-left. A paper-toned chip with a hairline keyline and a soft
+   shadow so it reads as a physical object resting on the leaf, not text adrift
+   in the margin. Monochrome by design: oxblood stays reserved for rarity. */
+.new-today {
+  position: absolute; top: .6rem; left: .6rem; z-index: 3;
+  display: flex; align-items: center; gap: .45ch;
+  background: var(--paper-lit);
+  border: 1px solid var(--mark);
+  padding: .26rem .5rem .24rem;
+  box-shadow: 0 1px 3px rgba(60, 48, 28, .20);
+  cursor: default; user-select: none;
+}
+.new-today .star {
+  font-size: .74rem; line-height: 1; color: var(--ink);
+}
+.new-today .lbl {
+  font-family: var(--mono);
+  font-size: .55rem; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--ink);
+}
+
 .art { aspect-ratio: 3 / 4; display: grid; place-items: center; overflow: hidden; }
 .art img {
   max-width: 100%; max-height: 100%; object-fit: contain;
