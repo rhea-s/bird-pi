@@ -50,6 +50,54 @@ h1 { margin: 0; font-weight: 500; font-size: clamp(2.2rem, 5.5vw, 3.6rem);
 .rule { height: 0; border-top: 1px solid var(--mark);
   box-shadow: 0 2px 0 -1px var(--mark-soft); max-width: 70rem; margin: 1.1rem auto 0; }
 
+/* ---- autoplay: a single plate-mark control, top-left ---- */
+/* Same vocabulary as the callout box and debug button: mono caps, ink on lit
+   paper, the double mark-rule. It toggles dark while the chorus runs. */
+.autoplay-btn {
+  position: fixed; top: clamp(1.4rem, 4vw, 3.5rem); left: clamp(1.4rem, 4vw, 3.5rem);
+  z-index: 300; display: inline-flex; align-items: center; gap: .6ch;
+  font-family: var(--mono); font-size: .7rem; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--ink); cursor: pointer;
+  background: var(--paper-lit); border: 1px solid var(--mark);
+  outline: 1px solid var(--mark-soft); outline-offset: 3px;
+  padding: .5rem .85rem; box-shadow: 0 2px 8px rgba(60,48,28,.18);
+  transition: background .15s, color .15s, border-color .15s;
+}
+.autoplay-btn:hover { background: var(--ink); color: var(--paper); }
+.autoplay-btn[data-playing="1"] { background: var(--ink); color: var(--paper);
+  border-color: var(--ink); }
+.autoplay-btn[disabled] { opacity: .55; cursor: default; }
+.autoplay-btn .ap-icon { font-size: .82em; line-height: 1; transform: translateY(.5px); }
+
+/* music notes rising off the singing bird. Iron-gall ink glyphs, set in the
+   serif, lifted a hair off the foliage with a paper-coloured edge; each one
+   floats out from the beak, drifts, tips, and fades. */
+.songnotes { position: absolute; inset: 0; z-index: 150; pointer-events: none; }
+.song-note {
+  position: absolute; transform: translate(-50%, -50%);
+  font-family: var(--serif); color: var(--ink-soft); opacity: 0;
+  text-shadow: 0 1px 0 var(--paper-lit), 0 0 2px var(--paper-lit);
+  will-change: transform, opacity;
+  animation: note-rise 1.75s ease-out forwards;
+}
+@keyframes note-rise {
+  0%   { opacity: 0;   transform: translate(-50%,-50%) translate(0,0) rotate(var(--r)); }
+  18%  { opacity: .9; }
+  100% { opacity: 0;
+         transform: translate(-50%,-50%) translate(var(--dx), var(--rise)) rotate(var(--r2)); }
+}
+/* the bird currently singing: a soft oxblood bloom, the rare-species accent,
+   so the eye finds the voice without anything jumping. */
+.bird--singing {
+  filter:
+    drop-shadow(0 0 7px rgba(140,74,58,.50))
+    drop-shadow(1px 5px 4px rgba(40,30,15,.30));
+}
+.bird--ground.bird--singing { filter: drop-shadow(0 0 7px rgba(140,74,58,.50)); }
+@media (prefers-reduced-motion: reduce) {
+  .song-note { animation-duration: .01ms; }
+}
+
 /* ---- the stage ---- */
 /* The tree image is a normal block child: it defines the stage's size and
    aspect ratio, so we never have to know tree.png's exact dimensions. Birds
@@ -165,8 +213,13 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
 </head>
 <body>
 
+<button class="autoplay-btn" id="autoplay" data-playing="0"
+        aria-label="Play the songs of the birds on the oak">
+  <span class="ap-icon" aria-hidden="true">&#9654;</span><span class="ap-label">Play</span>
+</button>
+
 <header class="masthead">
-  <p class="eyebrow"></p>
+  <p class="eyebrow">stay and listen for a while</p>
   <h1>The Oak</h1>
   <p class="dateline">
     <span id="dateline">live</span>
@@ -216,6 +269,8 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
   var stage   = document.getElementById("stage");
   var refresh = {{ refresh | default(60) | int }};
   var debug   = stage.hasAttribute("data-debug");
+  var lastEntries = [];   // most recent frame, so autoplay knows who's singable
+  var songIndex = {};     // sci(lowercased) -> {song_url, song_credit, ...}, from songs/index.json
 
   // optional ?blend=multiply for haloed cutouts
   var params = new URLSearchParams(location.search);
@@ -240,6 +295,11 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
   var clLeader = callout.querySelector(".cl-leader");
   var clDot    = callout.querySelector(".cl-dot");
   var clBox    = callout.querySelector(".callout-box");
+
+  // overlay that holds the rising music notes (its own layer, under the callout)
+  var notesLayer = document.createElement("div");
+  notesLayer.className = "songnotes";
+  stage.appendChild(notesLayer);
 
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
   function esc(s) {
@@ -277,6 +337,7 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
         + dataRow("Rarity", rarity, rcls)
         + dataRow("Seen", seen)
         + dataRow("Last heard", e.last_heard_text || "—")
+        + (e.song_credit ? dataRow("Song", "rec. " + e.song_credit) : "")
       + "</div>";
 
     clBox.style.top = ay + "%";
@@ -288,9 +349,31 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
   }
   function hideCallout() { callout.classList.remove("show"); }
 
+  // --- songs: match cached recordings to birds in the browser ------------
+  // The page reads songs/index.json itself and stamps song_url onto each entry
+  // by scientific name, so nothing in the server's entry-building has to change
+  // — it only has to serve the songs/ folder. If the backend already provides
+  // song_url, we leave it alone.
+  function attachSongs(entries) {
+    (entries || []).forEach(function (e) {
+      if (e.song_url) return;
+      var s = songIndex[(e.scientific_name || "").trim().toLowerCase()];
+      if (s) { e.song_url = s.song_url; e.song_credit = s.song_credit || e.song_credit; }
+    });
+    return entries || [];
+  }
+  function loadSongIndex() {
+    fetch("/songs/index.json", { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : {}; })
+      .then(function (j) { songIndex = j || {}; render(lastEntries); })  // repaint, now with songs
+      .catch(function () { /* songs/ not served yet — birds just stay silent */ });
+  }
+
   // --- the one render path: data in, perches out -------------------------
   function render(entries) {
     hideCallout();
+    entries = attachSongs(entries || []);
+    lastEntries = entries;
     // clear previous birds/labels, keep the bg + grid
     Array.prototype.slice.call(
       stage.querySelectorAll(".bird, .bird-rank")
@@ -320,6 +403,7 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
       img.style.transform = tf;
 
       stage.appendChild(img);
+      e._img = img;   // so autoplay can mark this bird as singing
 
       if (!debug) {
         img.addEventListener("mouseenter", function () { showCallout(e); });
@@ -384,12 +468,150 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
     });
   }
 
+  // --- autoplay: tour the tree, one song at a time ------------------------
+  // Click Play -> shuffle the birds that have a cached song, then play them in
+  // turn. Each gets a short clip (we don't sit through a 90-second soundscape),
+  // fading out before the next so the chorus doesn't click between birds. The
+  // singer glows and breathes music notes from its beak; its callout opens so
+  // you can see who you're hearing. Birds with no song_url are simply silent.
+  var CLIP_MS = 12000;   // longest a single bird sings before we fade onward
+  var FADE_MS = 650;     // crossfade-ish tail at the end of each clip
+  var GAP_MS  = 350;     // breath between birds
+  var NOTE_MS = 430;     // a new note every this-many ms while a bird sings
+  var NOTE_GLYPHS = ["\u266A", "\u266B", "\u2669", "\u266C"]; // ♪ ♫ ♩ ♬
+
+  var btn      = document.getElementById("autoplay");
+  var btnIcon  = btn.querySelector(".ap-icon");
+  var btnLabel = btn.querySelector(".ap-label");
+  var audio = new Audio();
+  audio.preload = "auto";
+
+  var playing = false, queue = [], current = null;
+  var clipTimer = null, fadeRAF = null, noteTimer = null;
+
+  function singable() {
+    return (lastEntries || []).filter(function (e) { return e && e.song_url; });
+  }
+  function shuffle(a) {
+    a = a.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+  function setBtn(on) {
+    btn.dataset.playing = on ? "1" : "0";
+    btnIcon.innerHTML = on ? "&#9632;" : "&#9654;";   // ■ : ▶
+    btnLabel.textContent = on ? "Stop" : "Play";
+  }
+  function flashNoSongs() {
+    var was = btnLabel.textContent;
+    btnLabel.textContent = "No songs yet"; btn.disabled = true;
+    setTimeout(function () { btnLabel.textContent = was; btn.disabled = false; }, 1500);
+  }
+
+  // where a bird's beak is, in stage %, and which way its notes drift.
+  function headPointFor(e) {
+    var vis = e.vis_h || e.bird_h || 8;
+    var x = e.x, y, dir;
+    if (e.anchor === "center") {
+      // centred on (x, y); rotate 180 means head-down (a nuthatch), beak below
+      if (e.rotate === 180) { y = e.y + vis * 0.42; dir = 1; }
+      else                  { y = e.y - vis * 0.42; dir = -1; }
+    } else {                              // feet at (x, y); beak near the top
+      y = e.y - vis * 0.92; dir = -1;
+    }
+    return { x: x, y: clamp(y, 3, 97), dir: dir, vis: vis };
+  }
+  function spawnNote(pt) {
+    var rect = stage.getBoundingClientRect();
+    var size = Math.max(11, Math.min(34, (pt.vis / 100) * rect.height * 0.5));
+    var n = document.createElement("span");
+    n.className = "song-note";
+    n.textContent = NOTE_GLYPHS[Math.floor(Math.random() * NOTE_GLYPHS.length)];
+    n.style.left = pt.x + "%";
+    n.style.top  = pt.y + "%";
+    n.style.fontSize = size.toFixed(0) + "px";
+    n.style.setProperty("--dx",   ((Math.random() * 2 - 1) * size * 0.7).toFixed(1) + "px");
+    n.style.setProperty("--rise", (size * 2.4 * pt.dir).toFixed(1) + "px");
+    n.style.setProperty("--r",    (Math.random() * 24 - 12).toFixed(1) + "deg");
+    n.style.setProperty("--r2",   (Math.random() * 44 - 22).toFixed(1) + "deg");
+    n.addEventListener("animationend", function () { n.remove(); });
+    notesLayer.appendChild(n);
+  }
+  function startNotes(e) {
+    stopNotes();
+    var pt = headPointFor(e);
+    spawnNote(pt);                                   // one straight away
+    noteTimer = setInterval(function () { spawnNote(pt); }, NOTE_MS);
+  }
+  function stopNotes() {
+    if (noteTimer) { clearInterval(noteTimer); noteTimer = null; }
+  }
+  function markSinging(e) {
+    Array.prototype.forEach.call(
+      stage.querySelectorAll(".bird--singing"),
+      function (n) { n.classList.remove("bird--singing"); });
+    if (e && e._img) e._img.classList.add("bird--singing");
+  }
+
+  function clearTimers() {
+    if (clipTimer) { clearTimeout(clipTimer); clipTimer = null; }
+    if (fadeRAF)   { cancelAnimationFrame(fadeRAF); fadeRAF = null; }
+  }
+  function start() {
+    var list = singable();
+    if (!list.length) { flashNoSongs(); return; }
+    queue = shuffle(list);
+    playing = true; setBtn(true);
+    playNext();
+  }
+  function playNext() {
+    clearTimers(); stopNotes(); markSinging(null); hideCallout();
+    if (!playing) return;
+    if (!queue.length) { stop(); return; }
+    current = queue.shift();
+    try {
+      audio.src = current.song_url;
+      audio.volume = 1;
+      audio.currentTime = 0;
+    } catch (err) { return scheduleNext(); }
+    var p = audio.play();
+    if (p && p.catch) p.catch(function () { scheduleNext(); });
+    startNotes(current); markSinging(current); showCallout(current);
+    clipTimer = setTimeout(fadeAndNext, CLIP_MS);
+  }
+  function fadeAndNext() {
+    clearTimers();
+    var v0 = audio.volume, t0 = performance.now();
+    (function step(t) {
+      var k = Math.min(1, (t - t0) / FADE_MS);
+      audio.volume = Math.max(0, v0 * (1 - k));
+      if (k < 1) { fadeRAF = requestAnimationFrame(step); }
+      else { try { audio.pause(); } catch (e) {} scheduleNext(); }
+    })(t0);
+  }
+  function scheduleNext() {
+    stopNotes(); markSinging(null);
+    setTimeout(function () { if (playing) playNext(); }, GAP_MS);
+  }
+  function stop() {
+    playing = false; setBtn(false);
+    clearTimers(); stopNotes(); markSinging(null); hideCallout();
+    try { audio.pause(); } catch (e) {}
+    current = null; queue = [];
+  }
+  audio.addEventListener("ended", function () { if (playing) fadeAndNext(); });
+  audio.addEventListener("error", function () { if (playing) scheduleNext(); });
+  btn.addEventListener("click", function () { playing ? stop() : start(); });
+
   // --- boot --------------------------------------------------------------
   var d = new Date();
   document.getElementById("dateline").textContent =
     d.toLocaleDateString(undefined, { month: "short", day: "numeric" }).toUpperCase();
 
   render(seed());
+  loadSongIndex();
 
   if (debug) {
     exportSlots();

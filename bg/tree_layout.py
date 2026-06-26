@@ -5,8 +5,9 @@ species table (with a sensible default); position comes from a fixed list of
 perch SLOTS, ordered sturdiest/lowest-first. We sort the birds big -> small and
 drop them into slots low -> high, so the giants land at the base and the canopy
 tips get the smallest birds — which is also exactly the placement the eye
-expects. A couple of species (nuthatches) get pulled out of that order and
-pinned to the trunk, head-down, the way they actually move.
+expects. A couple of species (nuthatches) used to get a head-down trunk pose,
+but that needs a cutout actually drawn head-down; for now every bird is treated
+as a normal upright perched (or ground-standing) bird.
 
 Everything here is data you can nudge:
   SLOTS        feet-anchor coordinates on the tree, in (x%, y%), rank order
@@ -42,10 +43,6 @@ SLOTS: list[tuple[float, float]] = [
 # Birds whose feet land below this y get a heavier cast shadow (they're standing
 # on grass, not gripping a branch).
 GROUND_Y = 84.0
-
-# Nuthatches walk down trunks head-first. They get pinned here instead of a slot.
-TRUNK_POINTS: list[tuple[float, float]] = [(48.0, 72.0), (53.0, 62.0)]
-TRUNK_DOWN_SCI = {"sitta carolinensis", "sitta canadensis", "sitta pusilla"}
 
 # --- how big birds are -----------------------------------------------------
 # Display height as a % of the stage (tree) height. Ratios roughly follow the
@@ -148,39 +145,25 @@ def build_layout(entries: list[dict]) -> list[dict]:
     If the caller has tagged entries with e['bbox'] (the cutout's alpha bounding
     box), sizing and anchoring track the visible bird; otherwise they track the
     canvas, which floats padded birds a little but still renders."""
-    items = list(entries)[: len(SLOTS) + len(TRUNK_POINTS)]
+    items = list(entries)[: len(SLOTS)]
     for e in items:
         t = tier_for(e.get("scientific_name", ""))
         e["tier"] = t
         e["_target_h"] = height_for(t)
 
-    trunk = [e for e in items
-             if (e.get("scientific_name", "").strip().lower() in TRUNK_DOWN_SCI)]
-    normal = [e for e in items if e not in trunk]
-    normal = normal[: len(SLOTS)]
-
     # biggest bird -> lowest/sturdiest slot
-    order = sorted(range(len(normal)),
-                   key=lambda i: normal[i]["_target_h"], reverse=True)
+    order = sorted(range(len(items)),
+                   key=lambda i: items[i]["_target_h"], reverse=True)
     for slot_rank, idx in enumerate(order):
-        e = normal[idx]
+        e = items[idx]
         x, y = SLOTS[slot_rank]
         e.update(x=x, y=y, rank=slot_rank, anchor="feet",
                  flip=False, rotate=0, ground=(y >= GROUND_Y),
                  z=int(round(y)))
         _apply_bbox(e, e["_target_h"], center=False, damp=not e["ground"])
 
-    # nuthatches: on the trunk, head-down
-    for n, e in enumerate(trunk):
-        x, y = TRUNK_POINTS[n % len(TRUNK_POINTS)]
-        e.update(x=x, y=y, rank=-1, anchor="center",
-                 flip=False, rotate=180, ground=False,
-                 z=int(round(y)) + 40)  # cling in front of the trunk
-        _apply_bbox(e, e["_target_h"], center=True)
-
-    placed = normal[: len(SLOTS)] + trunk
-    for e in placed:
+    for e in items:
         e.pop("_target_h", None)
     # render order: lowest (largest, nearest) last so it paints in front
-    placed.sort(key=lambda e: e.get("z", 0))
-    return placed
+    items.sort(key=lambda e: e.get("z", 0))
+    return items

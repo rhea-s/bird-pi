@@ -52,6 +52,16 @@ def create_app(cfg: cfgmod.Config | None = None, *,
     # generated cutouts live alongside the plates, in illustrations/generated/
     gdir = getattr(getattr(cfg, "plates", None), "generated_dir", None) \
         or os.path.join(pdir, "generated")
+    # songs/ holds the cached xeno-canto recordings + index.json that
+    # song_fetcher.py writes. Resolve it to the very folder the fetcher uses so
+    # /songs serves exactly what was fetched; fall back to the same default the
+    # fetcher uses if it can't be imported. Override the location for both with
+    # the BIRDGALLERY_SONGS env var.
+    try:
+        from .song_fetcher import SONGS_DIR as _songs_dir
+        sdir = str(_songs_dir.resolve())
+    except Exception:
+        sdir = os.path.abspath(os.environ.get("BIRDGALLERY_SONGS", "songs"))
 
     def collect():
         return gallerymod.build_gallery(cfg, plate_url_for=_plate_route)
@@ -187,6 +197,15 @@ def create_app(cfg: cfgmod.Config | None = None, *,
             abort(404)
         return send_from_directory(gdir, safe, max_age=3600)
 
+    @app.route("/songs/<path:name>")
+    def songs(name):
+        # Cached bird songs + index.json. basename guards traversal, so the
+        # _raw/ originals underneath songs/ aren't reachable from the web.
+        safe = os.path.basename(name)
+        if not os.path.exists(os.path.join(sdir, safe)):
+            abort(404)
+        return send_from_directory(sdir, safe, max_age=3600)
+
     @app.route("/healthz")
     def healthz():
         return "ok", 200
@@ -200,5 +219,24 @@ def create_app(cfg: cfgmod.Config | None = None, *,
             cfg, interval=getattr(cfg.plates, "auto_fetch_interval", 120))
         fetcher.start()
         app.extensions["plate_fetcher"] = fetcher  # so it can be stopped/inspected
+
+    # Auto-fetch songs for heard birds — the audio twin of the plate fetcher,
+    # also off the request path. Opt-in (it needs an XENO_CANTO_KEY): set
+    # `songs.auto_fetch: true` in config.yaml. It tops up only the unresolved
+    # species each pass and self-disables cleanly if the key is missing, so it's
+    # safe to leave enabled. Serving /songs above is independent of this — the
+    # page works with a hand-run fetch even when this stays off.
+    song_enable = False if start_fetcher is False \
+        else getattr(getattr(cfg, "songs", None), "auto_fetch", False)
+    if song_enable:
+        try:
+            from .song_fetcher import run_worker
+            interval = getattr(getattr(cfg, "songs", None),
+                               "auto_fetch_interval", 1800)
+            app.extensions["song_fetcher"] = run_worker(
+                lambda: [d["scientific_name"] for d in collage_entries()],
+                interval_s=interval)
+        except Exception as exc:  # never let songs break app startup
+            app.logger.warning("song fetcher not started: %s", exc)
 
     return app
