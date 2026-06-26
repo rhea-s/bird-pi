@@ -95,6 +95,8 @@
     }
     .bird[hidden] { display: none; }
     .bird .cut { display: grid; place-items: end center; transition: height .3s cubic-bezier(.2,.7,.2,1); }
+    /* while dragging the dial, sizes track the cursor 1:1 (no per-plate easing) */
+    .collage.scrubbing .bird, .collage.scrubbing .bird .cut { transition: none; }
     .bird .cut img {
       width: 100%; height: 100%; object-fit: contain; object-position: bottom;
       filter: drop-shadow(0 4px 5px rgba(60, 48, 28, .18));
@@ -196,8 +198,8 @@
 </head>
 <body>
   <header class="masthead">
-    <p class="eyebrow">the bigger the bird, the more it's heard</p>
-    <h1>Backyard Visitors</h1>
+    <p class="eyebrow">our tweet-iest neighbors</p>
+    <h1>"Leaderbird"</h1>
     <p class="dateline">
       <span id="dateline"></span>
       &nbsp;&middot;&nbsp; <a href="/">gallery</a> &nbsp;&middot;&nbsp; <a href="/tree">the oak</a>
@@ -364,7 +366,7 @@
       });
 
       var key = document.createElement('div');
-      key.innerHTML = '<h2 class="key-title">Key</h2><p class="key-sub">numbered by the full day&rsquo;s tally</p>';
+      key.innerHTML = '<h2 class="key-title">Key</h2><p class="key-sub">by today&rsquo;s tally</p>';
       keyEl.appendChild(key.firstChild); keyEl.appendChild(key.firstChild);
       var ol = document.createElement('ol'); ol.className = 'key-list';
       items.slice().sort(function (a, b) { return a.rank - b.rank; }).forEach(function (it) {
@@ -404,10 +406,20 @@
         }
       });
 
-      sizeWires();
-      if (activeId && !activeStillVisible) setActive(null);
-      else if (activeId) refreshActive();
+      if (!dragging) {           // skip layout-reading work mid-drag; restored on pointerup
+        sizeWires();
+        if (activeId && !activeStillVisible) setActive(null);
+        else if (activeId) refreshActive();
+      }
       if (dial) renderDial();
+    }
+
+    // coalesce rapid pointermoves into one update per animation frame
+    var rafPending = false;
+    function scheduleUpdate() {
+      if (rafPending) return;
+      rafPending = true;
+      requestAnimationFrame(function () { rafPending = false; update(); });
     }
 
     // ---------- hover linkage ----------
@@ -540,7 +552,8 @@
     function setTime(t, goManual) {
       T = clamp(t, 0, nowH);
       if (goManual) live = false;
-      update();
+      if (dragging) { if (dial) renderDial(); scheduleUpdate(); }  // icon instant, sizes per frame
+      else update();
     }
     function setMode(m) { if (m === mode) return; mode = m; recomputeScales(); update(); }
     function uFromEvent(ev) {
@@ -555,11 +568,18 @@
         if (!temporal) return;
         ev.preventDefault();
         dragging = true; live = false;
+        collage.classList.add('scrubbing');
         try { svg.setPointerCapture(ev.pointerId); } catch (e) {}
         setTime(uFromEvent(ev) * 24, true);
       }
       function move(ev) { if (!dragging) return; setTime(uFromEvent(ev) * 24, true); }
-      function up(ev) { if (!dragging) return; dragging = false; try { svg.releasePointerCapture(ev.pointerId); } catch (e) {} }
+      function up(ev) {
+        if (!dragging) return;
+        dragging = false;
+        collage.classList.remove('scrubbing');
+        try { svg.releasePointerCapture(ev.pointerId); } catch (e) {}
+        update();   // restore wires/active sizing now that the drag has ended
+      }
       svg.addEventListener('pointerdown', down);
       svg.addEventListener('pointermove', move);
       svg.addEventListener('pointerup', up);
