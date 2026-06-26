@@ -3,8 +3,10 @@
 Routes:
   /                 the field-guide gallery (the plate-book)
   /collage          the full-colour cutout collage (generated illustrations)
+  /tree             the oak — recent birds perched on a generated tree
   /api/gallery.json plate-book data as JSON (the page polls this to refresh)
   /api/collage.json collage data as JSON, incl. each bird's cutout_url
+  /api/tree.json    tree data as JSON, each bird tagged with size + position
   /plate/<name>     serves a cached plate image
   /generated/<name> serves a generated transparent cutout
   /healthz          liveness check
@@ -19,11 +21,12 @@ from __future__ import annotations
 import os
 from dataclasses import asdict
 
-from flask import (Flask, abort, jsonify, render_template,
+from flask import (Flask, abort, jsonify, render_template, request,
                    send_from_directory)
 
 from . import config as cfgmod
 from . import gallery as gallerymod
+from . import tree_layout
 from .platefetcher import PlateFetcher
 
 
@@ -40,6 +43,11 @@ def create_app(cfg: cfgmod.Config | None = None, *,
                start_fetcher: bool | None = None) -> Flask:
     cfg = cfg or cfgmod.load()
     app = Flask(__name__)
+    # Re-read templates from disk on each request. Without this, running with
+    # debug=False (as run_web.py does) caches the compiled template in memory,
+    # so edits to tree.html/gallery.html won't show until the process restarts.
+    app.config["TEMPLATES_AUTO_RELOAD"] = True
+    app.jinja_env.auto_reload = True
     pdir = cfgmod.plates_dir(cfg)
     # generated cutouts live alongside the plates, in illustrations/generated/
     gdir = getattr(getattr(cfg, "plates", None), "generated_dir", None) \
@@ -66,6 +74,50 @@ def create_app(cfg: cfgmod.Config | None = None, *,
         about the illustrations."""
         return [d for d in gallery_dicts() if d["cutout_url"]]
 
+    _bbox_cache: dict[str, tuple] = {}
+
+    def _cutout_bbox(key: str):
+        """Alpha bounding box of a generated cutout as (l, t, r, b) fractions of
+        its canvas, plus the visible bird's aspect ratio (width/height in real
+        pixels). The fractions let the tree size/anchor the visible bird rather
+        than the padded canvas; the aspect lets it trim height for elongated
+        birds so visual mass stays consistent. Cached by mtime; returns
+        (None, None) if it can't be read."""
+        path = os.path.join(gdir, key)
+        try:
+            mtime = os.path.getmtime(path)
+        except OSError:
+            return (None, None)
+        hit = _bbox_cache.get(key)
+        if hit and hit[0] == mtime:
+            return hit[1]
+        frac, aspect = None, None
+        try:
+            from PIL import Image
+            with Image.open(path) as im:
+                im = im.convert("RGBA")
+                W, H = im.size
+                bbox = im.getchannel("A").point(lambda a: 255 if a > 10 else 0).getbbox()
+            if bbox:
+                frac = (bbox[0] / W, bbox[1] / H, bbox[2] / W, bbox[3] / H)
+                vw, vh = (bbox[2] - bbox[0]), (bbox[3] - bbox[1])
+                aspect = (vw / vh) if vh else None
+        except Exception:
+            frac, aspect = None, None
+        _bbox_cache[key] = (mtime, (frac, aspect))
+        return (frac, aspect)
+
+    def tree_entries():
+        """The most-recent cutouts, each annotated with its alpha bbox + aspect,
+        then sized + positioned on the oak by tree_layout."""
+        ents = collage_entries()
+        for e in ents:
+            url = e.get("cutout_url") or ""
+            frac, aspect = _cutout_bbox(os.path.basename(url)) if url else (None, None)
+            e["bbox"] = frac
+            e["aspect"] = aspect
+        return tree_layout.build_layout(ents)
+
     @app.route("/")
     def index():
         try:
@@ -86,6 +138,18 @@ def create_app(cfg: cfgmod.Config | None = None, *,
         return render_template("collage.html", entries=entries,
                                refresh=cfg.web.refresh_seconds, error=error)
 
+    @app.route("/tree")
+    def tree_view():
+        try:
+            entries = tree_entries()
+            error = None
+        except Exception as exc:
+            entries, error = [], str(exc)
+        debug = request.args.get("debug") in ("1", "true", "yes")
+        return render_template("tree.html", entries=entries,
+                               refresh=cfg.web.refresh_seconds, error=error,
+                               tree_url="/generated/tree.png", debug=debug)
+
     @app.route("/api/gallery.json")
     def gallery_json():
         try:
@@ -97,6 +161,13 @@ def create_app(cfg: cfgmod.Config | None = None, *,
     def collage_json():
         try:
             return jsonify({"entries": collage_entries(), "error": None})
+        except Exception as exc:
+            return jsonify({"entries": [], "error": str(exc)}), 200
+
+    @app.route("/api/tree.json")
+    def tree_json():
+        try:
+            return jsonify({"entries": tree_entries(), "error": None})
         except Exception as exc:
             return jsonify({"entries": [], "error": str(exc)}), 200
 

@@ -9,175 +9,658 @@
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <style>
-    /* The collage borrows every token from style.css; it only adds the
-       justified-row machinery and a lighter caption scale. No plate-mark here —
-       the cutouts sit straight on the paper, full colour, as if pinned. */
-    main { max-width: 96rem; margin: 0 auto; }
+    /* Specimen-drawer collage. Plates are full-colour cutouts, sized so each
+       box's AREA is proportional to how often the bird was heard. Names live in
+       a numbered Key; rarity / tally / last-heard surface on hover, with a
+       dashed leader line tying badge to Key entry.
 
-    .collage { margin: 2.2rem auto 0; min-height: 40vh; }
-    .row { display: flex; align-items: flex-start; margin-bottom: clamp(1rem, 2.2vw, 2rem); }
+       The day-dial (a moon->sun->moon sundial) scrubs time: drag the celestial
+       icon back through the day and the plates re-size to that moment — either
+       a running total up to that time, or the activity within a window around
+       it. Sizes share one fixed scale; birds not yet heard at the dial's time
+       drop off the page. Palette/type tokens come from style.css via
+       var(--token, fallback); the sun/moon colours are local. */
+
+    main { max-width: 104rem; margin: 0 auto; padding: 0 clamp(1rem, 3vw, 2.5rem); }
+
+    /* cross-page nav in the dateline, matching /tree */
+    .dateline a { color: inherit; }
+
+    /* ---- the day-dial ------------------------------------------------ */
+    /* ---- the day-dial (lives in the right column, above the Key) ----- */
+    .daydial {
+      margin: .2rem 0 1.2rem; width: 100%;
+      display: flex; flex-direction: column; align-items: center; gap: .4rem;
+    }
+    .daydial svg { width: 100%; max-width: 100%; height: auto; touch-action: none; cursor: grab; display: block; }
+    .daydial.is-disabled svg { cursor: default; opacity: .6; }
+    .dial-arc { fill: none; stroke: var(--rule, rgba(58,47,29,.32)); stroke-width: 1.4; stroke-linecap: round; }
+    .dial-arc--future { stroke-dasharray: 2 4.5; opacity: .55; }
+    .dial-arc--past { stroke: var(--ink-soft, rgba(58,47,29,.55)); stroke-width: 1.7; }
+    .dial-handle { cursor: grab; }
+    .daydial.is-disabled .dial-handle { cursor: default; }
+    .dial-handle:focus { outline: none; }
+    .dial-handle:focus-visible .dial-ring { stroke: var(--oxblood, #7a2230); stroke-width: 2.2; }
+    .dial-ring { fill: var(--paper, #efe8d7); stroke: var(--mark, #b7a98a); stroke-width: 1.2; }
+    .sun-body { fill: var(--sun, #c2902f); }
+    .sun-ray  { stroke: var(--sun, #c2902f); stroke-width: 1.5; stroke-linecap: round; }
+    .moon-body { fill: var(--moon, #c4b694); }
+    .moon-carve { fill: var(--paper, #efe8d7); }
+
+    .dial-read { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; justify-content: center; }
+    .dial-time {
+      font: 500 1.02rem/1 "Cormorant Garamond", serif; letter-spacing: .05em;
+      color: var(--ink, #3a2f1d); font-variant-numeric: tabular-nums;
+    }
+    .dial-live {
+      font: 600 .68rem/1 "Cormorant Garamond", serif; letter-spacing: .14em;
+      text-transform: uppercase; color: var(--ink-soft, rgba(58,47,29,.6));
+      background: none; border: 1px solid var(--rule, rgba(58,47,29,.32));
+      border-radius: 1rem; padding: .2rem .6rem; cursor: pointer;
+    }
+    .dial-live.on { color: var(--paper, #efe8d7); background: var(--oxblood, #7a2230); border-color: var(--oxblood, #7a2230); }
+    .dial-modes { display: flex; gap: .1rem; flex-basis: 100%; justify-content: center; }
+    .dial-mode {
+      font: 500 .72rem/1 "Cormorant Garamond", serif; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--ink-soft, rgba(58,47,29,.55));
+      background: none; border: 0; border-bottom: 1.5px solid transparent;
+      padding: .12rem .25rem; cursor: pointer;
+    }
+    .dial-mode.on { color: var(--ink, #3a2f1d); border-bottom-color: var(--oxblood, #7a2230); }
+    .dial-hint {
+      font: italic 400 .82rem/1.3 "Cormorant Garamond", serif;
+      color: var(--ink-soft, rgba(58,47,29,.55)); text-align: center; max-width: 28rem; margin: .15rem 0 0;
+    }
+
+    .stage {
+      position: relative;
+      display: flex; align-items: flex-start;
+      gap: clamp(1.4rem, 3vw, 3rem);
+      margin: 1.4rem 0 0;
+    }
+
+    /* ---- the drawer of plates ---------------------------------------- */
+    .collage {
+      flex: 1 1 auto; min-width: 0;
+      display: flex; flex-wrap: wrap;
+      justify-content: center; align-items: flex-end;
+      gap: 20px; min-height: 40vh;
+    }
 
     .bird {
-      display: flex; flex-direction: column;
+      position: relative; display: block; cursor: pointer;
       opacity: 0; transform: translateY(8px);
-      animation: settle .5s ease forwards;
+      animation: settle .5s ease forwards; animation-delay: var(--d, 0s);
+      transition: width .3s cubic-bezier(.2,.7,.2,1);
     }
-    .bird .cut { display: grid; place-items: end center; }
+    .bird[hidden] { display: none; }
+    .bird .cut { display: grid; place-items: end center; transition: height .3s cubic-bezier(.2,.7,.2,1); }
     .bird .cut img {
       width: 100%; height: 100%; object-fit: contain; object-position: bottom;
       filter: drop-shadow(0 4px 5px rgba(60, 48, 28, .18));
       transition: transform .25s ease, filter .25s ease;
     }
-    .bird:hover .cut img {
+    .bird:hover .cut img,
+    .bird.on .cut img {
       transform: translateY(-4px);
-      filter: drop-shadow(0 8px 9px rgba(60, 48, 28, .24));
+      filter: drop-shadow(0 9px 10px rgba(60, 48, 28, .26));
     }
 
-    /* reuse .caption typography from style.css, just a touch smaller & tighter */
-    .bird .caption { padding: .7rem .35rem 0; }
-    .bird .caption h2 { font-size: 1.16rem; letter-spacing: .12em; text-indent: .12em; }
-    .bird .latin { font-size: .98rem; }
-    .bird .heard { margin-top: .45rem; }
+    .bird .tag {
+      position: absolute; top: -2px; left: -2px; z-index: 2;
+      min-width: 1.45rem; height: 1.45rem; padding: 0 .28rem;
+      display: grid; place-items: center;
+      font: 600 .84rem/1 "Cormorant Garamond", serif;
+      color: var(--paper, #efe8d7);
+      background: var(--oxblood, #7a2230);
+      border-radius: 50%;
+      box-shadow: 0 1px 2px rgba(60, 48, 28, .3);
+    }
+
+    .stage.focus .bird:not(.on) { filter: opacity(.32) saturate(.7); }
+    .stage.focus .key-row:not(.on) { opacity: .42; }
+
+    /* ---- the Key ----------------------------------------------------- */
+    .side { flex: 0 0 19rem; max-width: 19rem; display: flex; flex-direction: column; }
+    .key { width: 100%; }
+    .key-title {
+      margin: 0; color: var(--ink, #3a2f1d);
+      font: 600 1.35rem/1 "Cormorant Garamond", serif;
+      letter-spacing: .16em; text-transform: uppercase; text-indent: .16em;
+    }
+    .key-sub {
+      margin: .2rem 0 1rem; color: var(--ink-soft, rgba(58, 47, 29, .6));
+      font: italic 400 .98rem/1.2 "Cormorant Garamond", serif;
+    }
+    .key-list { list-style: none; margin: 0; padding: 0; }
+    .key-row {
+      display: flex; gap: .6rem; align-items: baseline;
+      padding: .42rem .45rem; border-radius: .3rem; cursor: pointer;
+      transition: background .15s ease, opacity .15s ease;
+    }
+    .key-row:hover, .key-row.on { background: rgba(122, 34, 48, .08); }
+    .key-row.absent { opacity: .3; }
+    .kn {
+      flex: 0 0 1.6rem; text-align: right;
+      font: 600 1.02rem/1 "Cormorant Garamond", serif;
+      color: var(--oxblood, #7a2230);
+    }
+    .kbody { display: flex; flex-direction: column; min-width: 0; }
+    .kname {
+      font: 600 1.14rem/1.15 "Cormorant Garamond", serif; letter-spacing: .04em;
+      color: var(--ink, #3a2f1d);
+    }
+    .klatin {
+      font: italic 400 .96rem/1.2 "Cormorant Garamond", serif;
+      color: var(--ink-soft, rgba(58, 47, 29, .62));
+    }
+
+    /* ---- leader lines ------------------------------------------------ */
+    .wires { position: absolute; inset: 0; z-index: 5; pointer-events: none; overflow: visible; }
+    .wire {
+      fill: none; stroke: var(--oxblood, #7a2230);
+      stroke-width: 1.4; stroke-dasharray: 3 4; opacity: .85;
+    }
+    .wire-dot { fill: var(--oxblood, #7a2230); }
+
+    /* ---- hover detail card ------------------------------------------ */
+    .detail {
+      position: absolute; z-index: 10; max-width: 18rem;
+      padding: .7rem .9rem; pointer-events: none;
+      background: var(--paper, #f6f0e2);
+      border: 1px solid var(--rule, rgba(58, 47, 29, .22));
+      box-shadow: 0 6px 18px rgba(60, 48, 28, .18);
+      border-radius: .4rem;
+    }
+    .d-name { margin: 0; color: var(--ink, #3a2f1d); font: 600 1.2rem/1.1 "Cormorant Garamond", serif; letter-spacing: .05em; }
+    .d-latin { margin: .1rem 0 .5rem; color: var(--ink-soft, rgba(58, 47, 29, .62)); font: italic 400 1rem/1.2 "Cormorant Garamond", serif; }
+    .d-meta { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin: .2rem 0; }
+    .d-heard { margin: .4rem 0 0; color: var(--ink-soft, rgba(58, 47, 29, .62)); font: 400 .96rem/1.3 "Cormorant Garamond", serif; }
+    .d-heard .lbl, .d-meta .lbl { text-transform: uppercase; letter-spacing: .12em; font-size: .72rem; color: var(--ink-soft, rgba(58, 47, 29, .55)); }
+    .detail .tally { font: 600 1rem/1 "Cormorant Garamond", serif; color: var(--ink, #3a2f1d); }
+    .detail .sep   { color: var(--ink-soft, rgba(58, 47, 29, .4)); }
+    .detail .rarity { font: 500 .9rem/1 "Cormorant Garamond", serif; letter-spacing: .06em; }
+    .detail .rarity--rare, .detail .rarity--very_rare { color: var(--oxblood, #7a2230); }
 
     @keyframes settle { to { opacity: 1; transform: none; } }
+
+    @media (max-width: 820px) {
+      .stage { flex-direction: column; }
+      .side { flex: 0 0 auto; max-width: none; width: 100%; }
+    }
     @media (prefers-reduced-motion: reduce) {
-      .bird { animation: none; opacity: 1; transform: none; }
-      .bird .cut img, .bird:hover .cut img { transition: none; transform: none; }
+      .bird { animation: none; opacity: 1; transform: none; transition: none; }
+      .bird .cut, .bird .cut img, .bird:hover .cut img, .bird.on .cut img { transition: none; transform: none; }
     }
   </style>
 </head>
 <body>
   <header class="masthead">
-    <p class="eyebrow">@ bird-hampton drive &middot; the collage</p>
+    <p class="eyebrow">the bigger the bird, the more it's heard</p>
     <h1>Backyard Visitors</h1>
-    <p class="dateline" id="dateline"></p>
+    <p class="dateline">
+      <span id="dateline"></span>
+      &nbsp;&middot;&nbsp; <a href="/">gallery</a> &nbsp;&middot;&nbsp; <a href="/tree">the oak</a>
+    </p>
     <div class="rule"></div>
   </header>
 
   <main>
     <p class="notice" id="notice">Gathering today&rsquo;s visitors&hellip;</p>
-    <section class="collage" id="collage" aria-label="Birds heard today"></section>
+    <div class="stage" id="stage">
+      <section class="collage" id="collage" aria-label="Birds heard today, sized by frequency"></section>
+      <aside class="side">
+        <div class="daydial" id="daydial" hidden></div>
+        <div class="key" id="key" aria-label="Key to the plates"></div>
+      </aside>
+      <svg class="wires" id="wires" aria-hidden="true"></svg>
+      <div class="detail" id="detail" role="status" hidden></div>
+    </div>
   </main>
 
-  <footer><div class="rule"></div><p>BirdNET-Go &middot; illustrations pinned on the page like a specimen drawer</p></footer>
+  <footer><div class="rule"></div><p>BirdNET-Go &middot; plates sized by tally, the day scrubbed by sun and moon</p></footer>
 
   <script id="seed" type="application/json">{{ entries | tojson }}</script>
   <script>
-    const REFRESH = {{ refresh }} * 1000;
-    const GAP = 18;
-    let items = [];   // {e, asp}
+  (function () {
+    "use strict";
 
+    var PARAMS = new URLSearchParams(location.search);
+    var FORCE_DEMO = PARAMS.has('demo');
+    var REFRESH = {{ refresh }} * 1000;
+    var WIN_HW = 1.5;                       // window half-width (hours) for "by period"
+    // A shallow circular-arc bow (sun's-path feel): spans 2*HW wide with a soft
+    // ARCH-tall rise, easing into the baseline at a gentle angle rather than
+    // plunging vertically the way a half-ellipse does.
+    var VBW = 320, CX = 160, HW = 132, ARCH = 60, APEX_Y = 15;
+    var ARC_R = ARCH / 2 + (HW * HW) / (2 * ARCH);   // radius of the parent circle
+    var ARC_TH = Math.asin(HW / ARC_R);              // half sweep angle
+    var ARC_YC = APEX_Y + ARC_R;                     // circle centre (below the apex)
+    var VBH = APEX_Y + ARCH + 17;                    // baseline + icon clearance
+
+    var stage   = document.getElementById('stage');
+    var collage = document.getElementById('collage');
+    var keyEl   = document.getElementById('key');
+    var wires   = document.getElementById('wires');
+    var detail  = document.getElementById('detail');
+    var notice  = document.getElementById('notice');
+    var dialWrap = document.getElementById('daydial');
+
+    var items = [];          // persistent: {e, asp, id, rank, dayTotal, hourly, fig, cut, row}
+    var activeId = null;
+    var mode = 'cumulative'; // or 'window'
+    var T = nowHours();
+    var nowH = T;
+    var live = true;
+    var temporal = true;
+    var dragging = false;
+    var globalCumR = 0, globalWinR = 0, lastW = 0;
+    var dial = null;         // refs to dial sub-elements
+
+    // ---------- small helpers ----------
+    function nowHours() { var d = new Date(); return d.getHours() + d.getMinutes() / 60 + d.getSeconds() / 3600; }
+    function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+    function smoothstep(a, b, x) { var t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+    function dayness(u) { return smoothstep(0.21, 0.30, u) * (1 - smoothstep(0.70, 0.79, u)); }
+
+    function fmtTime(t) {
+      var h = Math.floor(t) % 24, m = Math.round((t - Math.floor(t)) * 60);
+      if (m === 60) { m = 0; h = (h + 1) % 24; }
+      var ap = h >= 12 ? 'PM' : 'AM', hh = h % 12; if (hh === 0) hh = 12;
+      return hh + ':' + String(m).padStart(2, '0') + ' ' + ap;
+    }
+
+    function hashStr(s) { var h = 2166136261; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+
+    // preview-only: spread count_today into a believable daily curve
+    function synthHourly(e) {
+      var total = (e.count_today == null) ? ((hashStr(e.scientific_name || '') % 9) + 2) : Math.max(1, e.count_today);
+      var seed = hashStr(e.scientific_name || e.common_name || 'x');
+      var peaks = [6, 8, 10, 13, 16, 18];
+      var peak = peaks[seed % peaks.length];
+      var spread = 2 + ((seed >> 3) % 3);
+      var w = [], wsum = 0, h;
+      for (h = 0; h < 24; h++) { var d = h - peak; var x = Math.exp(-(d * d) / (2 * spread * spread)); w.push(x); wsum += x; }
+      var arr = new Array(24).fill(0), assigned = 0;
+      for (h = 0; h < 24; h++) { var c = Math.round(total * w[h] / wsum); arr[h] = c; assigned += c; }
+      arr[peak] = Math.max(0, arr[peak] + (total - assigned));
+      return arr;
+    }
+
+    // ---------- time -> count ----------
+    function cumAt(hourly, t) {
+      var h = Math.floor(t), f = t - h, s = 0, i;
+      for (i = 0; i < h && i < hourly.length; i++) s += hourly[i] || 0;
+      if (h < hourly.length) s += f * (hourly[h] || 0);
+      return s;
+    }
+    function windowAt(hourly, t, hw) {           // triangular kernel — smooth size
+      var s = 0;
+      for (var i = 0; i < hourly.length; i++) {
+        var d = Math.abs((i + 0.5) - t);
+        if (d < hw) s += (hourly[i] || 0) * (1 - d / hw);
+      }
+      return s;
+    }
+    function windowCountInt(hourly, t, hw) {      // honest integer for the tooltip
+      var s = 0;
+      for (var i = 0; i < hourly.length; i++) if (Math.abs((i + 0.5) - t) < hw) s += hourly[i] || 0;
+      return s;
+    }
+    function valueAt(it) {
+      if (!temporal) return it.dayTotal == null ? 0.5 : it.dayTotal;  // unknown-count birds still show small
+      if (!it.hourly) return 0.5;   // in the list but not heard today: keep present, small, time-independent
+      return mode === 'window' ? windowAt(it.hourly, T, WIN_HW) : cumAt(it.hourly, T);
+    }
+    function countAt(it) {
+      if (!temporal || !it.hourly) return it.dayTotal;   // dayTotal is null for not-today birds -> tooltip omits tally
+      if (mode === 'window') return windowCountInt(it.hourly, T, WIN_HW);
+      return Math.round(cumAt(it.hourly, T));
+    }
+
+    // ---------- scales (fixed, so sizes are comparable across the day) ----------
+    function recomputeScales() {
+      var mc = 0, mw = 0;
+      items.forEach(function (it) {
+        var rc = Math.sqrt(Math.max(it.dayTotal || 1, 1) / it.asp);
+        if (rc > mc) mc = rc;
+        if (temporal && it.hourly) {
+          var pk = 0;
+          for (var h = 0; h < 24; h++) { var v = windowAt(it.hourly, h + 0.5, WIN_HW); if (v > pk) pk = v; }
+          var rw = Math.sqrt(Math.max(pk, 1) / it.asp);
+          if (rw > mw) mw = rw;
+        }
+      });
+      globalCumR = mc; globalWinR = temporal ? mw : mc;
+    }
+
+    // ---------- detail card content ----------
+    function detailHTML(it) {
+      var e = it.e, meta = [], c = countAt(it);
+      if (c != null) {
+        var lbl = (temporal && mode === 'window') ? '<span class="lbl">in this window</span> ' : '';
+        meta.push(lbl + '<span class="tally"><span class="n">' + c + '</span>&times;</span>');
+      }
+      if (e.rarity) meta.push('<span class="rarity rarity--' + (e.rarity_level || 'unknown') + '">' + e.rarity + '</span>');
+      var metaRow = meta.length ? '<p class="d-meta">' + meta.join('<span class="sep">&middot;</span>') + '</p>' : '';
+      var heard = e.last_heard_text ? '<p class="d-heard"><span class="lbl">Last heard</span> ' + e.last_heard_text + '</p>' : '';
+      return '<p class="d-name">' + e.common_name + '</p><p class="d-latin">' + e.scientific_name + '</p>' + metaRow + heard;
+    }
+
+    // ---------- build persistent DOM once per data load ----------
+    function build() {
+      collage.innerHTML = '';
+      keyEl.innerHTML = '';
+      var byDay = items.slice().sort(function (a, b) { return b.h0 - a.h0; }); // big->small cascade (full-day)
+      byDay.forEach(function (it, i) {
+        var fig = document.createElement('figure');
+        fig.className = 'bird';
+        fig.dataset.id = it.id;
+        fig.style.setProperty('--d', (i * 0.025) + 's');
+        fig.innerHTML = '<span class="tag">' + it.rank + '</span>' +
+          '<div class="cut"><img src="' + it.e.cutout_url + '" alt="' + it.e.common_name + '" loading="lazy"></div>';
+        collage.appendChild(fig);
+        it.fig = fig; it.cut = fig.querySelector('.cut');
+      });
+
+      var key = document.createElement('div');
+      key.innerHTML = '<h2 class="key-title">Key</h2><p class="key-sub">numbered by the full day&rsquo;s tally</p>';
+      keyEl.appendChild(key.firstChild); keyEl.appendChild(key.firstChild);
+      var ol = document.createElement('ol'); ol.className = 'key-list';
+      items.slice().sort(function (a, b) { return a.rank - b.rank; }).forEach(function (it) {
+        var li = document.createElement('li');
+        li.className = 'key-row'; li.dataset.id = it.id;
+        li.innerHTML = '<span class="kn">' + it.rank + '</span><span class="kbody">' +
+          '<span class="kname">' + it.e.common_name + '</span>' +
+          '<span class="klatin">' + it.e.scientific_name + '</span></span>';
+        ol.appendChild(li); it.row = li;
+      });
+      keyEl.appendChild(ol);
+    }
+
+    // ---------- size everything to the current time (cheap; runs each scrub frame) ----------
+    function update() {
+      var W = collage.clientWidth || lastW; if (W) lastW = W;
+      if (!W || !items.length) return;
+      var maxH = clamp(W * 0.27, 168, 380), minH = 86;
+      var gmr = mode === 'window' ? globalWinR : globalCumR;
+      var K = gmr ? maxH / gmr : maxH;
+      var activeStillVisible = false;
+
+      items.forEach(function (it) {
+        var v = valueAt(it);
+        if (v <= 0.04) {
+          it.fig.hidden = true;
+          if (it.row) it.row.classList.add('absent');
+          it._v = 0;
+        } else {
+          var h = clamp(K * Math.sqrt(v / it.asp), minH, maxH);
+          it.fig.hidden = false;
+          it.fig.style.width = Math.round(h * it.asp) + 'px';
+          it.cut.style.height = Math.round(h) + 'px';
+          if (it.row) it.row.classList.remove('absent');
+          it._v = v;
+          if (it.id === activeId) activeStillVisible = true;
+        }
+      });
+
+      sizeWires();
+      if (activeId && !activeStillVisible) setActive(null);
+      else if (activeId) refreshActive();
+      if (dial) renderDial();
+    }
+
+    // ---------- hover linkage ----------
+    function centerIn(el, s) { var r = el.getBoundingClientRect(); return { x: r.left - s.left + r.width / 2, y: r.top - s.top + r.height / 2 }; }
+    function sizeWires() { wires.setAttribute('width', stage.clientWidth); wires.setAttribute('height', stage.clientHeight); wires.setAttribute('viewBox', '0 0 ' + stage.clientWidth + ' ' + stage.clientHeight); }
+
+    function draw(id) {
+      wires.innerHTML = '';
+      var fig = collage.querySelector('.bird[data-id="' + id + '"]');
+      if (!fig || fig.hidden) return;
+      var tag = fig.querySelector('.tag');
+      var kn = keyEl.querySelector('.key-row[data-id="' + id + '"] .kn');
+      if (!tag || !kn) return;
+      var s = stage.getBoundingClientRect();
+      var a = centerIn(tag, s), b = centerIn(kn, s), mx = (a.x + b.x) / 2;
+      wires.innerHTML =
+        '<path class="wire" d="M ' + a.x + ' ' + a.y + ' C ' + mx + ' ' + a.y + ', ' + mx + ' ' + b.y + ', ' + b.x + ' ' + b.y + '"/>' +
+        '<circle class="wire-dot" cx="' + a.x + '" cy="' + a.y + '" r="3"/>' +
+        '<circle class="wire-dot" cx="' + b.x + '" cy="' + b.y + '" r="3"/>';
+    }
+    function positionDetail(id) {
+      var fig = collage.querySelector('.bird[data-id="' + id + '"]');
+      if (!fig || fig.hidden) { detail.hidden = true; return; }
+      var s = stage.getBoundingClientRect(), b = fig.getBoundingClientRect();
+      detail.hidden = false; detail.style.visibility = 'hidden';
+      var dw = detail.offsetWidth, dh = detail.offsetHeight;
+      var left = clamp((b.left - s.left) + (b.width - dw) / 2, 6, stage.clientWidth - dw - 6);
+      var top = (b.top - s.top) - dh - 10;
+      if (top < 2) top = (b.bottom - s.top) + 10;
+      detail.style.left = left + 'px'; detail.style.top = top + 'px'; detail.style.visibility = '';
+    }
+    function refreshActive() {
+      var it = items.find(function (x) { return x.id === activeId; });
+      if (!it) return;
+      detail.innerHTML = detailHTML(it);
+      positionDetail(activeId); draw(activeId);
+    }
+    function setActive(id) {
+      activeId = id;
+      stage.classList.toggle('focus', !!id);
+      collage.querySelectorAll('.bird').forEach(function (f) { f.classList.toggle('on', f.dataset.id === id); });
+      keyEl.querySelectorAll('.key-row').forEach(function (r) { r.classList.toggle('on', r.dataset.id === id); });
+      if (!id) { detail.hidden = true; wires.innerHTML = ''; return; }
+      refreshActive();
+    }
+    function bindHover() {
+      stage.addEventListener('mouseover', function (e) {
+        var t = e.target.closest('.bird, .key-row'); if (t && t.dataset.id !== activeId) setActive(t.dataset.id);
+      });
+      stage.addEventListener('mouseout', function (e) {
+        var from = e.target.closest('.bird, .key-row');
+        var to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest('.bird, .key-row') : null;
+        if (from && !to) setActive(null);
+      });
+      stage.addEventListener('click', function (e) {
+        var t = e.target.closest('.bird, .key-row'); if (t) setActive(activeId === t.dataset.id ? null : t.dataset.id);
+      });
+    }
+
+    // ---------- the day-dial ----------
+    function pointFor(u) {
+      var a = ARC_TH * (2 * u - 1);                  // -TH at left, 0 at apex, +TH at right
+      return { x: CX + ARC_R * Math.sin(a), y: ARC_YC - ARC_R * Math.cos(a) };
+    }
+    function arcPath(u0, u1) {
+      var n = 48, d = '';
+      for (var i = 0; i <= n; i++) { var p = pointFor(u0 + (u1 - u0) * i / n); d += (i ? 'L' : 'M') + p.x.toFixed(1) + ' ' + p.y.toFixed(1) + ' '; }
+      return d.trim();
+    }
+    function buildDial() {
+      var rays = '';
+      for (var k = 0; k < 8; k++) { var a = k * Math.PI / 4; rays += '<line class="sun-ray" x1="' + (7 * Math.cos(a)).toFixed(2) + '" y1="' + (7 * Math.sin(a)).toFixed(2) + '" x2="' + (10.5 * Math.cos(a)).toFixed(2) + '" y2="' + (10.5 * Math.sin(a)).toFixed(2) + '"/>'; }
+      var svg =
+        '<svg viewBox="0 0 ' + VBW + ' ' + VBH + '" role="presentation">' +
+          '<path class="dial-arc dial-arc--future" d="' + arcPath(0, 1) + '"/>' +
+          '<path class="dial-arc dial-arc--past" id="dialPast" d=""/>' +
+          '<g class="dial-handle" id="dialHandle" tabindex="0" role="slider" ' +
+            'aria-label="Time of day" aria-valuemin="0" aria-valuemax="24" aria-valuenow="0" aria-valuetext="">' +
+            '<circle r="13" fill="transparent"/>' +
+            '<circle class="dial-ring" r="11"/>' +
+            '<g id="dialSun"><circle class="sun-body" r="5.4"/>' + rays + '</g>' +
+            '<g id="dialMoon"><circle class="moon-body" r="5.4"/><circle class="moon-carve" cx="2.6" cy="-1.3" r="4.7"/></g>' +
+          '</g>' +
+        '</svg>' +
+        '<div class="dial-read">' +
+          '<button class="dial-live" id="dialLive" type="button">live</button>' +
+          '<span class="dial-time" id="dialTime"></span>' +
+          '<span class="dial-modes">' +
+            '<button class="dial-mode" id="modeCum" type="button" aria-pressed="true">running total</button>' +
+            '<button class="dial-mode" id="modeWin" type="button" aria-pressed="false">by period</button>' +
+          '</span>' +
+        '</div>' +
+        '<p class="dial-hint" id="dialHint"></p>';
+      dialWrap.innerHTML = svg;
+      dialWrap.hidden = false;
+      dial = {
+        svg: dialWrap.querySelector('svg'),
+        past: dialWrap.querySelector('#dialPast'),
+        handle: dialWrap.querySelector('#dialHandle'),
+        sun: dialWrap.querySelector('#dialSun'),
+        moon: dialWrap.querySelector('#dialMoon'),
+        time: dialWrap.querySelector('#dialTime'),
+        liveBtn: dialWrap.querySelector('#dialLive'),
+        modeCum: dialWrap.querySelector('#modeCum'),
+        modeWin: dialWrap.querySelector('#modeWin'),
+        hint: dialWrap.querySelector('#dialHint')
+      };
+      wireDial();
+    }
+    function renderDial() {
+      if (!dial) return;
+      dialWrap.classList.toggle('is-disabled', !temporal);
+      var u = clamp(T / 24, 0, 1), p = pointFor(u), day = dayness(u);
+      dial.past.setAttribute('d', arcPath(0, u));   // solid line follows the icon
+      dial.handle.setAttribute('transform', 'translate(' + p.x.toFixed(1) + ',' + p.y.toFixed(1) + ')');
+      dial.sun.style.opacity = day.toFixed(3);
+      dial.moon.style.opacity = (1 - day).toFixed(3);
+      dial.handle.setAttribute('aria-valuenow', (T).toFixed(2));
+      dial.handle.setAttribute('aria-valuetext', fmtTime(T));
+      dial.time.textContent = fmtTime(T);
+      dial.liveBtn.classList.toggle('on', live);
+      dial.liveBtn.textContent = live ? 'live' : 'go live';
+      dial.modeCum.classList.toggle('on', mode === 'cumulative');
+      dial.modeWin.classList.toggle('on', mode === 'window');
+      dial.hint.textContent = !temporal
+        ? 'Hourly data isn\u2019t in the feed yet \u2014 showing the full day. Add an hourly[] per species, or open ?demo to preview.'
+        : (mode === 'window' ? 'Drag the sun: bird size = how much each bird was heard around this time.'
+                             : 'Drag the sun back through the day.');
+    }
+    function setTime(t, goManual) {
+      T = clamp(t, 0, nowH);
+      if (goManual) live = false;
+      update();
+    }
+    function setMode(m) { if (m === mode) return; mode = m; recomputeScales(); update(); }
+    function uFromEvent(ev) {
+      var b = dial.svg.getBoundingClientRect();
+      var vx = (ev.clientX - b.left) / b.width * VBW;
+      var a = clamp(Math.asin(clamp((vx - CX) / ARC_R, -1, 1)), -ARC_TH, ARC_TH);
+      return 0.5 + a / (2 * ARC_TH);
+    }
+    function wireDial() {
+      var svg = dial.svg;
+      function down(ev) {
+        if (!temporal) return;
+        ev.preventDefault();
+        dragging = true; live = false;
+        try { svg.setPointerCapture(ev.pointerId); } catch (e) {}
+        setTime(uFromEvent(ev) * 24, true);
+      }
+      function move(ev) { if (!dragging) return; setTime(uFromEvent(ev) * 24, true); }
+      function up(ev) { if (!dragging) return; dragging = false; try { svg.releasePointerCapture(ev.pointerId); } catch (e) {} }
+      svg.addEventListener('pointerdown', down);
+      svg.addEventListener('pointermove', move);
+      svg.addEventListener('pointerup', up);
+      svg.addEventListener('pointercancel', up);
+
+      dial.handle.addEventListener('keydown', function (ev) {
+        if (!temporal) return;
+        var step = ev.shiftKey ? 1 : 0.25, used = true;
+        if (ev.key === 'ArrowRight' || ev.key === 'ArrowUp') setTime(T + step, true);
+        else if (ev.key === 'ArrowLeft' || ev.key === 'ArrowDown') setTime(T - step, true);
+        else if (ev.key === 'PageUp') setTime(T + 1, true);
+        else if (ev.key === 'PageDown') setTime(T - 1, true);
+        else if (ev.key === 'Home') setTime(0, true);
+        else if (ev.key === 'End') { live = true; setTime(nowH, false); }
+        else used = false;
+        if (used) ev.preventDefault();
+      });
+
+      dial.liveBtn.addEventListener('click', function () { live = true; setTime(nowH, false); });
+      dial.modeCum.addEventListener('click', function () { setMode('cumulative'); });
+      dial.modeWin.addEventListener('click', function () { setMode('window'); });
+    }
+
+    // ---------- ingest ----------
     function stamp() {
-      const t = new Date().toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
+      var t = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
       document.getElementById('dateline').textContent = 'Updated ' + t;
     }
 
-    function targetRowHeight() {
-      const w = window.innerWidth;
-      if (w < 560) return 150;
-      if (w < 1000) return 200;
-      return 244;
-    }
-
-    function metaLine(e) {
-      const hasCount = e.count_today !== null && e.count_today !== undefined;
-      if (!hasCount && !e.rarity) return '';
-      const parts = [];
-      if (hasCount) parts.push(`<span class="tally"><span class="n">${e.count_today}</span>&times;</span>`);
-      if (e.rarity) {
-        if (hasCount) parts.push('<span class="sep">&middot;</span>');
-        parts.push(`<span class="rarity rarity--${e.rarity_level || 'unknown'}">${e.rarity}</span>`);
-      }
-      return `<p class="meta">${parts.join('')}</p>`;
-    }
-
-    function figure(it, w, h) {
-      const e = it.e;
-      const fig = document.createElement('figure');
-      fig.className = 'bird';
-      fig.style.width = w + 'px';
-      fig.innerHTML =
-        `<div class="cut" style="height:${h}px"><img src="${e.cutout_url}" alt="${e.common_name}"></div>
-         <figcaption class="caption">
-           <h2>${e.common_name}</h2>
-           <p class="latin">${e.scientific_name}</p>
-           <p class="heard"><span class="lbl">Last heard</span> <span class="when">${e.last_heard_text}</span></p>
-           ${metaLine(e)}
-         </figcaption>`;
-      return fig;
-    }
-
-    // Justified rows: fill the width at a target height, the last row left-aligned.
-    function layout() {
-      const c = document.getElementById('collage');
-      const W = c.clientWidth;
-      if (!W || !items.length) return;
-      c.innerHTML = '';
-      const target = targetRowHeight();
-      let row = [], sumAsp = 0;
-
-      const flush = (last) => {
-        const avail = W - GAP * (row.length - 1);
-        let h = avail / sumAsp;
-        if (last) h = Math.min(h, target);     // don't blow up a lonely last row
-        h = Math.min(h, target * 1.5);
-        const rowEl = document.createElement('div');
-        rowEl.className = 'row';
-        rowEl.style.gap = GAP + 'px';
-        row.forEach((it, i) => {
-          const f = figure(it, Math.round(h * it.asp), Math.round(h));
-          f.style.animationDelay = (i * 0.03) + 's';
-          rowEl.appendChild(f);
+    function prepare(entries) {
+      // returns a promise of preloaded {e, asp}
+      return Promise.all(entries.map(function (e) {
+        return new Promise(function (res) {
+          var im = new Image();
+          im.onload = function () { res({ e: e, asp: (im.naturalWidth / im.naturalHeight) || 1 }); };
+          im.onerror = function () { res(null); };
+          im.src = e.cutout_url;
         });
-        c.appendChild(rowEl);
-        row = []; sumAsp = 0;
-      };
-
-      items.forEach(it => {
-        row.push(it); sumAsp += it.asp;
-        if ((W - GAP * (row.length - 1)) / sumAsp < target) flush(false);
-      });
-      if (row.length) flush(true);
+      })).then(function (l) { return l.filter(Boolean); });
     }
 
-    // Preload to learn each cutout's aspect ratio, then lay out.
     function ingest(entries) {
-      const notice = document.getElementById('notice');
-      if (!entries.length) {
+      if (!entries || !entries.length) {
         notice.textContent = 'No visitors with illustrations yet. They appear here as plates are generated.';
-        notice.style.display = '';
-        document.getElementById('collage').innerHTML = '';
-        items = [];
-        return;
+        notice.style.display = ''; collage.innerHTML = ''; keyEl.innerHTML = '';
+        wires.innerHTML = ''; detail.hidden = true; dialWrap.hidden = true;
+        items = []; activeId = null; return;
       }
-      Promise.all(entries.map(e => new Promise(res => {
-        const im = new Image();
-        im.onload = () => res({ e, asp: im.naturalWidth / im.naturalHeight });
-        im.onerror = () => res(null);
-        im.src = e.cutout_url;
-      }))).then(loaded => {
-        items = loaded.filter(Boolean);
+      prepare(entries).then(function (loaded) {
+        nowH = nowHours();
+
+        var withHourly = loaded.filter(function (x) { return Array.isArray(x.e.hourly) && x.e.hourly.length === 24; }).length;
+        temporal = withHourly > 0 || FORCE_DEMO;
+        console.info('[collage] hourly timing on ' + withHourly + '/' + loaded.length +
+                     ' plates; dial ' + (temporal ? 'enabled' : 'disabled' + (FORCE_DEMO ? '' : ' (add ?demo to preview)')));
+
+        items = loaded.map(function (x, i) {
+          var e = x.e;
+          var hourly = (Array.isArray(e.hourly) && e.hourly.length === 24) ? e.hourly.map(function (n) { return +n || 0; })
+                     : (FORCE_DEMO ? synthHourly(e) : null);
+          var dayTotal = (e.count_today != null) ? e.count_today
+                       : (hourly ? hourly.reduce(function (a, b) { return a + b; }, 0) : null);
+          return { e: e, asp: x.asp, id: 'b' + i, hourly: hourly, dayTotal: dayTotal,
+                   h0: Math.sqrt(Math.max(dayTotal || 1, 1) / x.asp) };
+        });
+
+        // rank by full-day tally (loudest = 1); nulls last
+        items.slice().sort(function (a, b) {
+          var ca = a.dayTotal == null ? -Infinity : a.dayTotal, cb = b.dayTotal == null ? -Infinity : b.dayTotal;
+          if (cb !== ca) return cb - ca;
+          return (a.e.common_name || '').localeCompare(b.e.common_name || '');
+        }).forEach(function (it, i) { it.rank = i + 1; });
+
+        recomputeScales();
         notice.style.display = 'none';
-        layout();
+        if (!dial) buildDial();
+        if (live) T = nowH; else T = clamp(T, 0, nowH);
+        build();
+        setActive(null);
+        update();
         stamp();
       });
     }
 
-    async function refresh() {
-      try {
-        const r = await fetch('/api/collage.json', { cache: 'no-store' });
-        const data = await r.json();
-        if (!data.error) ingest(data.entries);
-      } catch (_) { /* keep last good render */ }
+    function refresh() {
+      if (dragging) return;            // don't yank data out from under a drag
+      fetch('/api/collage.json', { cache: 'no-store' })
+        .then(function (r) { return r.json(); })
+        .then(function (data) { if (data && !data.error) ingest(data.entries); })
+        .catch(function () { /* keep last good render */ });
     }
 
-    // resize: re-justify with the aspects we already have (no refetch)
-    let rz;
-    window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(layout, 150); });
+    var rz;
+    window.addEventListener('resize', function () { clearTimeout(rz); rz = setTimeout(update, 150); });
 
-    ingest(JSON.parse(document.getElementById('seed').textContent));
+    bindHover();
+    try { ingest(JSON.parse(document.getElementById('seed').textContent)); }
+    catch (e) { ingest([]); }
     stamp();
     setInterval(refresh, REFRESH);
+  })();
   </script>
 </body>
 </html>

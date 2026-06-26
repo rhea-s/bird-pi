@@ -31,6 +31,7 @@ class Species:
     count: int = 0                      # all-time detections (species/summary)
     confidence: Optional[float] = None
     count_today: Optional[int] = None   # detections so far today (species/daily)
+    hourly: Optional[list[int]] = None  # 24 ints, today's detections by local hour
     rarity: Optional[str] = None        # display label, e.g. "Rare"
     rarity_level: Optional[str] = None  # slug: very-common…very-rare (for styling)
 
@@ -44,6 +45,8 @@ _COUNT = ("count", "total_detections", "totalDetections", "detections",
           "detection_count", "n")
 _CONF = ("confidence", "max_confidence", "maxConfidence", "latest_confidence")
 _HOURLY = ("hourly_counts", "hourlyCounts", "hourly", "counts_by_hour")
+# When hourly arrives as a list of objects, the hour index lives under one of:
+_HOUR_KEYS = ("hour", "h", "hour_of_day", "hourOfDay", "index", "idx")
 # Rarity comes from the range-filter geomodel: either a ready-made label
 # ("Very Rare") or the raw 0..1 occurrence probability we bucket ourselves.
 _RARITY = ("rarity", "rarity_label", "rarityLabel", "occurrence_label", "status")
@@ -100,6 +103,39 @@ def _daily_count(row: dict) -> int:
     if isinstance(hourly, (list, tuple)):
         return sum(_as_int(x) for x in hourly)
     return 0
+
+
+def _normalize_hourly(value) -> Optional[list[int]]:
+    """Coerce a daily record's hourly breakdown into a 24-int list indexed by
+    local hour, or None if it's absent or unrecognized. Accepts a 24-length list
+    of ints, a dict like {"0": n, "13": n}, or a list of
+    {"hour": h, "count": n} objects — the shape has drifted across builds."""
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        arr = [0] * 24
+        for k, v in value.items():
+            try:
+                h = int(str(k).strip())
+            except (TypeError, ValueError):
+                continue
+            if 0 <= h < 24:
+                arr[h] = _as_int(v)
+        return arr
+    if isinstance(value, (list, tuple)):
+        if value and isinstance(value[0], dict):     # [{"hour": h, "count": n}, …]
+            arr = [0] * 24
+            for item in value:
+                h = _as_int(_first(item, _HOUR_KEYS, -1), -1)
+                if 0 <= h < 24:
+                    arr[h] = _as_int(_first(item, _COUNT, 0))
+            return arr
+        vals = [_as_int(x) for x in value]           # plain [n, n, … ]
+        if len(vals) >= 24:
+            return vals[:24]
+        if vals:
+            return vals + [0] * (24 - len(vals))
+    return None
 
 
 # Occurrence-probability buckets (range-filter score 0..1 -> tier). Thresholds
@@ -226,14 +262,20 @@ class BirdNetClient:
                     return payload[key]
         return []
 
-    def daily_counts(self, day: date_cls | str | None = None) -> dict[str, int]:
-        """Return {name_key: count} of detections for a single day (default
-        today), keyed by both scientific and common name (lowercased) so callers
-        can match on either. Returns {} if the endpoint is unavailable (older
-        builds) or the request fails, so callers degrade gracefully.
+    def daily_detail(self, day: date_cls | str | None = None) -> dict[str, dict]:
+        """Return {name_key: {"count": int, "hourly": [24 ints] | None}} for a
+        single day (default today), keyed by both scientific and common name
+        (lowercased) so callers can match on either. Returns {} if the endpoint
+        is unavailable (older builds) or the request fails, so callers degrade
+        gracefully.
 
-        Note: 'today' is this machine's local date. If birdgallery runs in a
-        different timezone than the Pi, pass an explicit `day` near midnight.
+        'count' is today's total; 'hourly' is the per-hour breakdown indexed by
+        BirdNET-Go's local hour, or None if the build doesn't expose it.
+
+        Note: 'today' is this machine's local date, and the hourly indices are
+        the server's local hours. If birdgallery runs in a different timezone
+        than the Pi, pass an explicit `day` near midnight and expect the
+        morning/afternoon split to be shifted by the offset.
         """
         if day is None:
             day = datetime.now().date()
@@ -244,18 +286,24 @@ class BirdNetClient:
                                 {"date": day})
         except requests.RequestException:
             return {}
-        counts: dict[str, int] = {}
+        out: dict[str, dict] = {}
         for row in self._as_list(payload):
             if not isinstance(row, dict):
                 continue
-            c = _daily_count(row)
+            rec = {"count": _daily_count(row),
+                   "hourly": _normalize_hourly(_first(row, _HOURLY))}
             sci = str(_first(row, _SCI, "")).strip().lower()
             com = str(_first(row, _COMMON, "")).strip().lower()
             if sci:
-                counts[sci] = c
+                out[sci] = rec
             if com:
-                counts.setdefault(com, c)
-        return counts
+                out.setdefault(com, rec)
+        return out
+
+    def daily_counts(self, day: date_cls | str | None = None) -> dict[str, int]:
+        """{name_key: today's count}. Thin wrapper over daily_detail() for
+        callers that don't need the hourly breakdown."""
+        return {k: v["count"] for k, v in self.daily_detail(day).items()}
 
     def species_rarity(self, scientific_name: str) -> tuple:
         """Return (level_slug, display_label) for a species via /api/v2/species,
@@ -326,13 +374,15 @@ class BirdNetClient:
         # slicing so we only pay one extra request, and never in the plate
         # worker's path (which leaves include_today False).
         if include_today and result:
-            today = self.daily_counts()
+            today = self.daily_detail()
             if today:
                 for s in result:
-                    key = s.scientific_name.strip().lower()
-                    s.count_today = today.get(key)
-                    if s.count_today is None and s.common_name:
-                        s.count_today = today.get(s.common_name.strip().lower())
+                    rec = today.get(s.scientific_name.strip().lower())
+                    if rec is None and s.common_name:
+                        rec = today.get(s.common_name.strip().lower())
+                    if rec is not None:
+                        s.count_today = rec["count"]
+                        s.hourly = rec["hourly"]
 
         # Enrich with rarity (separate per-species endpoint; cached). Only fetch
         # for species the summary didn't already carry a rarity for.
@@ -349,6 +399,23 @@ class BirdNetClient:
         rows = self._as_list(payload)
         head = rows[0] if rows else payload
         return (f"Endpoint: {self.base}/api/v2/analytics/species/summary\n"
+                f"Records: {len(rows)}\n"
+                f"First record:\n{json.dumps(head, indent=2, default=str)}")
+
+    def probe_daily(self, day: date_cls | str | None = None) -> str:
+        """Dump the raw species/daily response so you can confirm whether your
+        build exposes an hourly breakdown (and under what key/shape)."""
+        if day is None:
+            day = datetime.now().date()
+        if hasattr(day, "isoformat"):
+            day = day.isoformat()
+        try:
+            payload = self._get("/api/v2/analytics/species/daily", {"date": day})
+        except requests.RequestException as exc:
+            return f"GET {self.base}/api/v2/analytics/species/daily failed: {exc}"
+        rows = self._as_list(payload)
+        head = rows[0] if rows else payload
+        return (f"Endpoint: {self.base}/api/v2/analytics/species/daily?date={day}\n"
                 f"Records: {len(rows)}\n"
                 f"First record:\n{json.dumps(head, indent=2, default=str)}")
 

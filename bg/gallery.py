@@ -28,6 +28,7 @@ class GalleryEntry:
     plate_number: Optional[str]   # Roman numeral, only if verified
     count: int                    # all-time detections
     count_today: Optional[int] = None  # detections so far today; None if unknown
+    hourly: Optional[list[int]] = None  # 24 ints, today's detections by local hour
     rarity: Optional[str] = None       # display label, e.g. "Rare"
     rarity_level: Optional[str] = None  # slug for styling: very-common…very-rare
 
@@ -91,6 +92,7 @@ def build_gallery(cfg: cfgmod.Config, *, plate_url_for=None) -> list[GalleryEntr
             plate_number=to_roman(num) if num else None,
             count=sp.count,
             count_today=sp.count_today,
+            hourly=sp.hourly,
             rarity=sp.rarity,
             rarity_level=sp.rarity_level,
         ))

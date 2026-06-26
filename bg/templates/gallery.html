@@ -8,12 +8,20 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <style>
+    /* cross-page nav in the dateline, matching /tree: links take the dateline's
+       own muted colour rather than the browser default */
+    .dateline a { color: inherit; }
+  </style>
 </head>
 <body>
   <header class="masthead">
-    <p class="eyebrow">@ bird-hampton drive</p>
+    <p class="eyebrow">the singh family's</p>
     <h1>Backyard Visitors</h1>
-    <p class="dateline" id="dateline"></p>
+    <p class="dateline">
+      <span id="dateline"></span>
+      &nbsp;&middot;&nbsp; <a href="/tree">the oak</a> &nbsp;&middot;&nbsp; <a href="/collage">usual suspects</a>
+    </p>
     <div class="rule"></div>
   </header>
 

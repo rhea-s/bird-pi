@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>birdgallery — the oak</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+/* birdgallery — /tree. Self-contained so it owns its own palette and doesn't
+   lean on style.css loading. Same plate-book vocabulary as the gallery: aged
+   rag paper, iron-gall ink, letterspaced caps, live data set in mono. The oak
+   is a single generated plate; the birds are her transparent cutouts, sized by
+   species and dropped onto perches that run sturdy-low to flimsy-high. */
+:root {
+  --paper:     #e6dcc4;
+  --paper-lit: #efe8d7;
+  --ink:       #2a241b;
+  --ink-soft:  #4a4031;
+  --mark:      #b7a98a;
+  --mark-soft: #cabfa0;
+  --data:      #6b5d45;
+  --rare:      #8c4a3a;
+  --serif: "Cormorant Garamond", "Hoefler Text", Garamond, "Times New Roman", serif;
+  --mono: ui-monospace, "SF Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  --tree-fade: .55;   /* tree-bg opacity: lower = the oak recedes further toward
+                        the paper, lifting the birds. Override live: /tree?fade=.6 */
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: clamp(1.4rem, 4vw, 3.5rem);
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(120% 80% at 15% 0%, rgba(255,251,240,.55), transparent 60%),
+    radial-gradient(120% 90% at 90% 100%, rgba(120,104,74,.10), transparent 55%);
+  color: var(--ink); font-family: var(--serif);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- masthead ---- */
+.masthead { text-align: center; max-width: 70rem; margin: 0 auto 1.4rem; }
+.eyebrow { font-style: italic; color: var(--ink-soft); font-size: 1.05rem;
+  letter-spacing: .02em; margin: 0 0 .35rem; }
+h1 { margin: 0; font-weight: 500; font-size: clamp(2.2rem, 5.5vw, 3.6rem);
+  letter-spacing: .22em; text-transform: uppercase; text-indent: .22em; }
+.dateline { font-family: var(--mono); font-size: .72rem; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--data); margin: .6rem 0 0; }
+.dateline a { color: var(--data); }
+.rule { height: 0; border-top: 1px solid var(--mark);
+  box-shadow: 0 2px 0 -1px var(--mark-soft); max-width: 70rem; margin: 1.1rem auto 0; }
+
+/* ---- the stage ---- */
+/* The tree image is a normal block child: it defines the stage's size and
+   aspect ratio, so we never have to know tree.png's exact dimensions. Birds
+   are absolutely positioned within and sized as a % of this box's height. */
+.stage-wrap { max-width: 92rem; margin: 2.2rem auto 0; }
+.tree-stage { position: relative; width: 100%; line-height: 0; }
+.tree-bg { display: block; width: 100%; height: auto;
+  opacity: var(--tree-fade); }
+
+.bird {
+  position: absolute; width: auto; pointer-events: auto;
+  /* A soft directional cast shadow so perched birds sit on their branch. No
+     halo — the birds read directly against the foliage. Ground birds get no
+     filter at all (see below). */
+  filter:
+    drop-shadow(1px 5px 4px rgba(40,30,15,.32))
+    drop-shadow(0 1px 1px rgba(40,30,15,.20));
+}
+/* Birds standing on the ground get no effect at all — no halo, no shadow.
+   They're nudged down into the grass in tree_layout so their feet meet the
+   ground, and the grass reads as their footing. */
+.bird--ground { filter: none; }
+
+/* Hover: a fine pale contour drawn around the bird's own silhouette (built from
+   the cutout's alpha, so it follows feathers), the way a specimen is lifted off
+   a plate. No movement — just the line, and the callout below. */
+.bird:hover {
+  filter:
+    drop-shadow(1px 0 0 var(--paper-lit)) drop-shadow(-1px 0 0 var(--paper-lit))
+    drop-shadow(0 1px 0 var(--paper-lit)) drop-shadow(0 -1px 0 var(--paper-lit))
+    drop-shadow(.7px .7px 0 var(--paper-lit)) drop-shadow(-.7px .7px 0 var(--paper-lit))
+    drop-shadow(.7px -.7px 0 var(--paper-lit)) drop-shadow(-.7px -.7px 0 var(--paper-lit))
+    drop-shadow(1px 5px 4px rgba(40,30,15,.26));
+}
+.bird--ground:hover {
+  filter:
+    drop-shadow(1px 0 0 var(--paper-lit)) drop-shadow(-1px 0 0 var(--paper-lit))
+    drop-shadow(0 1px 0 var(--paper-lit)) drop-shadow(0 -1px 0 var(--paper-lit))
+    drop-shadow(.7px .7px 0 var(--paper-lit)) drop-shadow(-.7px .7px 0 var(--paper-lit))
+    drop-shadow(.7px -.7px 0 var(--paper-lit)) drop-shadow(-.7px -.7px 0 var(--paper-lit));
+}
+
+/* ---- the specimen callout: leader line + labelled card ----
+   A single overlay, repositioned to whichever bird is hovered. The leader is a
+   hairline with a dot at the bird end; the card is a small plate-mark box with
+   the bird's names and its live data, set in the same voice as the gallery. */
+.callout { position: absolute; inset: 0; z-index: 200; pointer-events: none;
+  display: none; }
+.callout.show { display: block; }
+.cl-svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.cl-leader { stroke: var(--ink-soft); stroke-width: 1; }
+.cl-dot { fill: var(--ink-soft); }
+.callout-box {
+  position: absolute; min-width: 11rem; max-width: 16rem; line-height: 1.2;
+  background: var(--paper-lit); border: 1px solid var(--mark);
+  outline: 1px solid var(--mark-soft); outline-offset: 3px;
+  padding: .55rem .8rem .62rem; box-shadow: 0 2px 8px rgba(60,48,28,.20);
+}
+.cl-name { font-weight: 500; font-size: 1.02rem; letter-spacing: .12em;
+  text-transform: uppercase; text-indent: .12em; line-height: 1.18; color: var(--ink); }
+.cl-latin { font-style: italic; color: var(--ink-soft); font-size: .96rem;
+  margin: .06rem 0 .42rem; }
+.cl-rule { height: 0; border-top: 1px solid var(--mark); margin: .35rem 0 .45rem; }
+.cl-data { font-family: var(--mono); font-size: .615rem; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--data); }
+.cl-data > div { display: flex; justify-content: space-between; gap: 1.2ch;
+  padding: .12rem 0; }
+.cl-data .k { opacity: .6; }
+.cl-data .v { color: var(--ink-soft); font-variant-numeric: tabular-nums;
+  text-align: right; }
+.cl-data .v.rarity--very-common, .cl-data .v.rarity--common { opacity: .7; }
+.cl-data .v.rarity--uncommon { color: var(--ink-soft); }
+.cl-data .v.rarity--rare, .cl-data .v.rarity--very-rare { color: var(--rare);
+  letter-spacing: .12em; }
+.cl-data .v.rarity--very-rare { font-weight: 600; }
+
+/* optional integration mode for cutouts that still carry a white halo:
+   /tree?blend=multiply. Mutes colours, so it's off by default. */
+.tree-stage[data-blend="multiply"] .bird { mix-blend-mode: multiply; }
+
+.notice { max-width: 38rem; margin: 2.5rem auto; text-align: center;
+  font-size: 1.2rem; color: var(--ink-soft); line-height: 1.5; }
+.notice code { font-family: var(--mono); font-size: .85em; }
+.notice .detail { display: block; margin-top: .5rem; font-family: var(--mono);
+  font-size: .72rem; color: var(--data); }
+
+footer { max-width: 70rem; margin: 2.6rem auto 0; text-align: center; }
+footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin: 0; }
+
+/* ---- debug: drag birds, copy fresh SLOTS ---- */
+.dbg-grid { position: absolute; inset: 0; pointer-events: none; z-index: 50;
+  background-image:
+    repeating-linear-gradient(to right, rgba(140,74,58,.18) 0 1px, transparent 1px 10%),
+    repeating-linear-gradient(to bottom, rgba(140,74,58,.18) 0 1px, transparent 1px 10%);
+  display: none; }
+.tree-stage[data-debug] .dbg-grid { display: block; }
+.tree-stage[data-debug] .bird { cursor: grab; outline: 1px dashed rgba(140,74,58,.5); }
+.tree-stage[data-debug] .bird:active { cursor: grabbing; }
+.bird-rank { position: absolute; z-index: 60; transform: translate(-50%, -50%);
+  font: 600 .62rem/1 var(--mono); color: #fff; background: var(--rare);
+  padding: .15rem .3rem; border-radius: 2px; pointer-events: none; display: none; }
+.tree-stage[data-debug] ~ .dbg-panel { display: block; }
+.dbg-panel { display: none; max-width: 92rem; margin: 1rem auto 0;
+  font-family: var(--mono); font-size: .72rem; color: var(--data); }
+.dbg-panel textarea { width: 100%; min-height: 9rem; background: var(--paper-lit);
+  color: var(--ink); border: 1px solid var(--mark); padding: .6rem;
+  font: inherit; resize: vertical; }
+.dbg-panel button { font: inherit; letter-spacing: .08em; text-transform: uppercase;
+  background: var(--ink); color: var(--paper); border: 0; padding: .45rem .8rem;
+  margin: .5rem .4rem 0 0; cursor: pointer; }
+.dbg-panel .hint { margin: .4rem 0; font-style: normal; }
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <p class="eyebrow">heard lately, gathered in one oak</p>
+  <h1>The Oak</h1>
+  <p class="dateline">
+    <span id="dateline">live</span>
+    &nbsp;·&nbsp; <a href="/">gallery</a> &nbsp;·&nbsp; <a href="/collage">usual suspects</a>
+  </p>
+</header>
+<div class="rule"></div>
+
+<div class="stage-wrap">
+  <div class="tree-stage" id="stage"{% if debug %} data-debug{% endif %}>
+    <img class="tree-bg" src="{{ tree_url }}" alt="An oak; recently-heard birds perched on it">
+    <div class="dbg-grid"></div>
+    <!-- birds are injected here by render(), the single render path -->
+  </div>
+  <div class="dbg-panel" id="dbgPanel">
+    <p class="hint">Drag any bird to reposition it. Coordinates are its feet
+      (bottom-centre). When it looks right, copy the SLOTS block back into
+      <code>bg/tree_layout.py</code>.</p>
+    <textarea id="dbgOut" readonly></textarea>
+    <button id="dbgCopy">Copy SLOTS</button>
+    <button id="dbgReset">Reset</button>
+  </div>
+</div>
+
+{% if not entries %}
+<p class="notice">
+  {% if error %}
+    The oak is bare because BirdNET-Go didn’t answer.
+    <span class="detail">{{ error }}</span>
+  {% else %}
+    No cutouts collected yet. Run the segmentation pass, then the most recent
+    birds will gather here.
+  {% endif %}
+</p>
+{% endif %}
+
+<footer>
+  <p>Each bird is sized to its kind and set where its kind would sit. (Tree not to size.)</p>
+</footer>
+
+<!-- initial data, embedded so first paint needs no fetch. The page then polls
+     /api/tree.json on the same render path, so server and refresh never drift. -->
+<script id="seed" type="application/json">{{ entries | tojson }}</script>
+<script>
+(function () {
+  "use strict";
+  var stage   = document.getElementById("stage");
+  var refresh = {{ refresh | default(60) | int }};
+  var debug   = stage.hasAttribute("data-debug");
+
+  // optional ?blend=multiply for haloed cutouts
+  var params = new URLSearchParams(location.search);
+  var blend = params.get("blend");
+  if (blend) stage.setAttribute("data-blend", blend);
+  // optional ?fade=.7 to dial the tree back further (or =1 to keep it full)
+  var fade = params.get("fade");
+  if (fade !== null) stage.style.setProperty("--tree-fade", fade);
+
+  function seed() {
+    try { return JSON.parse(document.getElementById("seed").textContent) || []; }
+    catch (e) { return []; }
+  }
+
+  // --- the specimen callout: one overlay, moved to whichever bird is hovered -
+  var callout = document.createElement("div");
+  callout.className = "callout";
+  callout.innerHTML =
+    '<svg class="cl-svg"><line class="cl-leader"/><circle class="cl-dot" r="2.6"/></svg>'
+    + '<div class="callout-box"></div>';
+  stage.appendChild(callout);
+  var clLeader = callout.querySelector(".cl-leader");
+  var clDot    = callout.querySelector(".cl-dot");
+  var clBox    = callout.querySelector(".callout-box");
+
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+  function dataRow(k, v, cls) {
+    return '<div><span class="k">' + esc(k) + '</span>'
+         + '<span class="v ' + (cls || "") + '">' + esc(v) + "</span></div>";
+  }
+
+  function showCallout(e) {
+    try {
+    var vis = e.vis_h || e.bird_h || 8;
+    var sx = e.x;                                  // leader's bird end (the dot)
+    var sy = clamp(e.y - vis * 0.55, 7, 92);       // up around the bird's body
+    var side = e.x < 50 ? 1 : -1;                  // card sits toward centre
+    var ax = clamp(e.x + side * 8, 9, 91);         // where the leader meets the card
+    var ay = clamp(sy, 14, 82);
+
+    clLeader.setAttribute("x1", sx + "%"); clLeader.setAttribute("y1", sy + "%");
+    clLeader.setAttribute("x2", ax + "%"); clLeader.setAttribute("y2", ay + "%");
+    clDot.setAttribute("cx", sx + "%");    clDot.setAttribute("cy", sy + "%");
+
+    var seen = (e.count != null ? e.count : "—")
+             + (e.count_today ? "  ·  " + e.count_today + " today" : "");
+    var rarity = e.rarity || "—";
+    var rcls = "rarity--" + (e.rarity_level || "unknown");
+    clBox.innerHTML =
+      '<div class="cl-name">' + esc(e.common_name || "Unknown") + "</div>"
+      + '<div class="cl-latin">' + esc(e.scientific_name || "") + "</div>"
+      + '<div class="cl-rule"></div>'
+      + '<div class="cl-data">'
+        + dataRow("Rarity", rarity, rcls)
+        + dataRow("Seen", seen)
+        + dataRow("Last heard", e.last_heard_text || "—")
+      + "</div>";
+
+    clBox.style.top = ay + "%";
+    clBox.style.transform = "translateY(-50%)";
+    if (side > 0) { clBox.style.left = ax + "%"; clBox.style.right = "auto"; }
+    else { clBox.style.right = (100 - ax) + "%"; clBox.style.left = "auto"; }
+    callout.classList.add("show");
+    } catch (err) { /* never let a bad field kill the hover card */ }
+  }
+  function hideCallout() { callout.classList.remove("show"); }
+
+  // --- the one render path: data in, perches out -------------------------
+  function render(entries) {
+    hideCallout();
+    // clear previous birds/labels, keep the bg + grid
+    Array.prototype.slice.call(
+      stage.querySelectorAll(".bird, .bird-rank")
+    ).forEach(function (n) { n.remove(); });
+
+    entries.forEach(function (e) {
+      if (!e.cutout_url) return;
+
+      var img = document.createElement("img");
+      img.className = "bird" + (e.ground ? " bird--ground" : "");
+      img.src = e.cutout_url;
+      img.alt = e.common_name || e.scientific_name || "bird";
+      img.style.left   = e.x + "%";
+      img.style.top    = e.y + "%";
+      img.style.height = e.bird_h + "%";   // canvas height; bird hits vis_h
+      img.style.zIndex = String(e.z || Math.round(e.y));
+      img.dataset.rank = (e.rank == null ? "" : e.rank);
+      img.dataset.sci  = e.scientific_name || "";
+
+      // anchor the *visible* feet (or centre) at (x, y), from the alpha bbox
+      var ax = (e.anchor_x != null ? e.anchor_x : 0.5) * 100;
+      var ay = (e.anchor_y != null ? e.anchor_y : 1.0) * 100;
+      var tf = "translate(-" + ax + "%,-" + ay + "%)";
+      if (e.flip)   tf += " scaleX(-1)";
+      if (e.rotate) tf += " rotate(" + e.rotate + "deg)";
+      img.style.transformOrigin = ax + "% " + ay + "%";
+      img.style.transform = tf;
+
+      stage.appendChild(img);
+
+      if (!debug) {
+        img.addEventListener("mouseenter", function () { showCallout(e); });
+        img.addEventListener("mouseleave", hideCallout);
+      }
+
+      if (debug && e.rank != null && e.rank >= 0) {
+        var tag = document.createElement("div");
+        tag.className = "bird-rank";
+        tag.textContent = e.rank;
+        tag.style.left = e.x + "%";
+        tag.style.top  = e.y + "%";
+        tag.style.display = "block";
+        stage.appendChild(tag);
+        makeDraggable(img, tag, e);
+      }
+    });
+  }
+
+  // --- live refresh (paused in debug so it doesn't fight a drag) ----------
+  function poll() {
+    fetch("/api/tree.json", { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d && d.entries) render(d.entries); })
+      .catch(function () { /* keep last good frame */ });
+  }
+
+  // --- debug: drag to reposition, export a paste-ready SLOTS block --------
+  var slotState = {};  // rank -> [x, y]
+  function exportSlots() {
+    var ranks = Object.keys(slotState).map(Number).sort(function (a, b) { return a - b; });
+    var lines = ranks.map(function (r) {
+      var p = slotState[r];
+      return "    (" + p[0].toFixed(1) + ", " + p[1].toFixed(1) + "),"
+           + "  # " + r;
+    });
+    document.getElementById("dbgOut").value =
+      "SLOTS = [\n" + lines.join("\n") + "\n]";
+  }
+  function makeDraggable(img, tag, e) {
+    if (slotState[e.rank] == null) slotState[e.rank] = [e.x, e.y];
+    img.addEventListener("pointerdown", function (ev) {
+      ev.preventDefault();
+      img.setPointerCapture(ev.pointerId);
+      function move(m) {
+        var b = stage.getBoundingClientRect();
+        var x = Math.max(0, Math.min(100, ((m.clientX - b.left) / b.width) * 100));
+        var y = Math.max(0, Math.min(100, ((m.clientY - b.top) / b.height) * 100));
+        img.style.left = x + "%"; img.style.top = y + "%";
+        tag.style.left = x + "%"; tag.style.top = y + "%";
+        img.style.zIndex = String(Math.round(y));
+        slotState[e.rank] = [x, y];
+        exportSlots();
+      }
+      function up(u) {
+        img.releasePointerCapture(ev.pointerId);
+        img.removeEventListener("pointermove", move);
+        img.removeEventListener("pointerup", up);
+      }
+      img.addEventListener("pointermove", move);
+      img.addEventListener("pointerup", up);
+    });
+  }
+
+  // --- boot --------------------------------------------------------------
+  var d = new Date();
+  document.getElementById("dateline").textContent =
+    d.toLocaleDateString(undefined, { month: "short", day: "numeric" }).toUpperCase();
+
+  render(seed());
+
+  if (debug) {
+    exportSlots();
+    document.getElementById("dbgCopy").addEventListener("click", function () {
+      var t = document.getElementById("dbgOut"); t.select();
+      navigator.clipboard && navigator.clipboard.writeText(t.value);
+      this.textContent = "Copied";
+      var self = this; setTimeout(function () { self.textContent = "Copy SLOTS"; }, 1200);
+    });
+    document.getElementById("dbgReset").addEventListener("click", function () {
+      slotState = {}; render(seed()); exportSlots();
+    });
+  } else if (refresh > 0) {
+    setInterval(poll, refresh * 1000);
+  }
+})();
+</script>
+</body>
+</html>
