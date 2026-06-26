@@ -22,10 +22,22 @@ gallery:
 
 plates:
   # Folder holding cached illustrations, named <genus_species>.jpg
-  dir: "normalized_plates"
-  # Search phrase appended to the species name when fetching from Wikimedia
-  # Commons (see fetch_plates.py). Tuned to surface the engraved plates.
-  fetch_query_suffix: "John James Audubon Birds of America"
+  dir: "illustrations"
+  # Illustration sources, tried in order until an on-topic plate is found.
+  # Audubon covers North American natives; the Old World engravers fill
+  # introduced / Eurasian species (House Sparrow, Starling, ...) in the same
+  # plate aesthetic. Gould's per-species coverage on Commons is patchy, so
+  # Yarrell / Naumann / Morris follow as further fallbacks.
+  fetch_sources:
+    - "John James Audubon Birds of America"
+    - "John Gould Birds of Great Britain"
+    - "William Yarrell A History of British Birds"
+    - "Naumann Naturgeschichte der Voegel Mitteleuropas"
+    - "Francis Orpen Morris A History of British Birds"
+  # Last-resort CC photo from Avicommons when no illustration is found. Off by
+  # default: photos clash with the plates and dither poorly on e-ink, and many
+  # are cc-by-nc (attribution written to <slug>.credit.json).
+  photo_fallback: false
 
 web:
   host: "0.0.0.0"          # 0.0.0.0 so phones/laptops on your LAN can reach it

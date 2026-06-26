@@ -1,26 +1,34 @@
 #!/usr/bin/env python3
-"""Populate the illustrations cache with Audubon plates from Wikimedia Commons.
+"""Populate the illustrations cache with public-domain plates.
 
     python fetch_plates.py            # fetch plates for currently-seen species
     python fetch_plates.py --dry-run  # show what it WOULD download, fetch nothing
     python fetch_plates.py --all      # also (re)fetch species already cached
+    python fetch_plates.py --photos   # allow an Avicommons photo as a last resort
     python fetch_plates.py --species "Cardinalis cardinalis" "Cyanocitta cristata"
 
-Plates are saved as <genus_species>.jpg. To override any pick, just drop your
-own file with that name into the illustrations folder — the renderers prefer
-whatever file is there and never overwrite it unless you pass --all.
-
-Note: Audubon painted ~489 North American species. Birds outside that set (and
-the occasional taxonomic rename) won't resolve; those show a "plate not yet
-collected" leaf until you add an image by hand.
+Plates are resolved from Wikimedia Commons across the tiered sources in
+config.yaml (plates.fetch_sources) — Audubon first, then Gould, etc. — and the
+first hit whose title plausibly depicts the species is taken. Species no source
+covers stay a "plate not yet collected" leaf unless you enable --photos (or
+plates.photo_fallback) or drop your own <genus_species>.jpg into the folder.
 """
 import argparse
 import time
+import os, glob, shutil
 
 from bg import config as cfgmod
 from bg import plates as platemod
 from bg.birdnet import BirdNetClient
+from bg import plates as p
 
+pdir = "illustrations"
+junk = os.path.join(pdir, "_rejected")
+for f in glob.glob(os.path.join(junk, "*.jpg")):
+    if not p._is_blank_scan(open(f, "rb").read()):
+        dest = os.path.join(pdir, os.path.basename(f))
+        print("restoring:", os.path.basename(f))
+        shutil.move(f, dest)
 
 def main():
     ap = argparse.ArgumentParser()
@@ -28,11 +36,20 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--all", action="store_true",
                     help="re-fetch even if a plate is already cached")
+    ap.add_argument("--photos", action="store_true",
+                    help="allow an Avicommons CC photo when no illustration is found")
+    ap.add_argument("--photos-only", action="store_true",
+                    help="fetch Avicommons CC photos for everything, skipping the "
+                         "illustration search (override, not fallback). Combine "
+                         "with --all to replace existing plates.")
     ap.add_argument("--species", nargs="+",
                     help="explicit scientific names instead of querying BirdNET-Go")
     args = ap.parse_args()
     cfg = cfgmod.load(args.config)
     pdir = cfgmod.plates_dir(cfg)
+    sources = cfgmod.plate_sources(cfg)
+    photo_fallback = args.photos or cfg.plates.photo_fallback
+    photo_only = args.photos_only
 
     if args.species:
         targets = [(s, s) for s in args.species]  # (common, scientific)
@@ -52,9 +69,10 @@ def main():
             continue
         print(f"· {common} ({sci})")
         result = platemod.fetch_plate(
-            pdir, common, sci,
-            cfg.plates.fetch_query_suffix,
-            dry_run=args.dry_run
+            pdir, common, sci, sources,
+            dry_run=args.dry_run,
+            photo_fallback=photo_fallback,
+            photo_only=photo_only,
         )
         if result:
             got += 1

@@ -13,6 +13,7 @@
   --mark:       #b7a98a;   /* plate-mark + hairlines */
   --mark-soft:  #cabfa0;
   --data:       #6b5d45;   /* live annotation */
+  --rare:       #8c4a3a;   /* muted oxblood — the one accent, earned by scarcity */
   --serif: "Cormorant Garamond", "Hoefler Text", Garamond, "Times New Roman", serif;
   --mono: ui-monospace, "SF Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace;
 }
@@ -71,7 +72,7 @@ h1 {
   transition: opacity .5s ease;
 }
 
-.plate { display: flex; flex-direction: column; }
+.plate { display: flex; flex-direction: column; position: relative; }
 
 /* the embossed plate-mark: a faint outer impression + a hairline inner rule */
 .frame {
@@ -129,6 +130,30 @@ h1 {
 }
 .heard .lbl { opacity: .7; }
 .heard .when { color: var(--ink-soft); }
+
+/* today's tally — a sibling of .heard: same live-data voice, tucked close
+   beneath it so the two annotations read as a pair. The count itself takes
+   the darker ink, echoing .heard .when. */
+/* compact meta row: today's tally · rarity. A sibling of .heard in the same
+   live-data voice, tucked close beneath it. Rarity is the one element allowed
+   a touch of colour — and only when a bird is actually scarce: common species
+   recede, scarcer ones step forward, the rarest earn the oxblood. */
+.meta {
+  margin: .25rem 0 0; font-family: var(--mono);
+  font-size: .68rem; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--data);
+}
+.meta .n   { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.meta .sep { color: var(--mark); margin: 0 .55ch; }
+
+.rarity { color: var(--data); }
+.rarity--very-common,
+.rarity--common    { color: var(--data); opacity: .6; }
+.rarity--uncommon  { color: var(--ink-soft); }
+.rarity--rare,
+.rarity--very-rare { color: var(--rare); letter-spacing: .16em; }
+.rarity--very-rare { font-weight: 600; }
+.rarity--unknown   { color: var(--data); }
 
 /* ---- footer ---- */
 footer { max-width: 70rem; margin: 3.5rem auto 0; text-align: center; }

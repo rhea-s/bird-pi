@@ -1,9 +1,10 @@
 """The single source of truth both renderers consume.
 
 build_gallery() turns BirdNET-Go detections into a list of GalleryEntry objects:
-species name, Latin name, a humanized 'last heard', the cached plate path (or
-None), and an optional verified Audubon plate number. The web and e-ink
-renderers each take this same list — layout logic isn't duplicated between them.
+species name, Latin name, a humanized 'last heard', today's detection count, the
+cached plate path (or None), and an optional verified Audubon plate number. The
+web and e-ink renderers each take this same list — layout logic isn't duplicated
+between them.
 """
 from __future__ import annotations
 
@@ -25,7 +26,10 @@ class GalleryEntry:
     last_heard_iso: str           # machine-readable, for sorting/JS
     plate_url: Optional[str]      # path or web route; None if not collected
     plate_number: Optional[str]   # Roman numeral, only if verified
-    count: int
+    count: int                    # all-time detections
+    count_today: Optional[int] = None  # detections so far today; None if unknown
+    rarity: Optional[str] = None       # display label, e.g. "Rare"
+    rarity_level: Optional[str] = None  # slug for styling: very-common…very-rare
 
 
 # Verified Audubon plate numbers, scientific_name -> integer.
@@ -65,7 +69,9 @@ def build_gallery(cfg: cfgmod.Config, *, plate_url_for=None) -> list[GalleryEntr
     directly)."""
     client = BirdNetClient(cfg.birdnet.base_url, timeout=cfg.birdnet.timeout)
     species = client.recent_species(limit=cfg.gallery.limit,
-                                    min_confidence=cfg.gallery.min_confidence)
+                                    min_confidence=cfg.gallery.min_confidence,
+                                    include_today=True,
+                                    include_rarity=True)
     pdir = cfgmod.plates_dir(cfg)
     plate_numbers = _load_plate_numbers(cfg.root)
 
@@ -84,5 +90,8 @@ def build_gallery(cfg: cfgmod.Config, *, plate_url_for=None) -> list[GalleryEntr
             plate_url=url,
             plate_number=to_roman(num) if num else None,
             count=sp.count,
+            count_today=sp.count_today,
+            rarity=sp.rarity,
+            rarity_level=sp.rarity_level,
         ))
     return entries

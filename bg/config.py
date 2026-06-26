@@ -28,7 +28,29 @@ class GalleryCfg:
 @dataclass
 class PlatesCfg:
     dir: str = "illustrations"
+    # Back-compat single suffix. Prefer fetch_sources below; this is only used
+    # as a fallback when fetch_sources is empty.
     fetch_query_suffix: str = "John James Audubon Birds of America"
+    # Illustration sources, tried in order until an on-topic plate is found.
+    # Audubon covers North American natives; the Old World engravers below fill
+    # introduced / Eurasian species (House Sparrow, Starling, …) in the same
+    # plate aesthetic. Gould's coverage on Commons is patchy per-species, so
+    # Yarrell/Naumann/Morris are included as further fallbacks.
+    fetch_sources: list = field(default_factory=lambda: [
+        "John James Audubon Birds of America",
+        "John Gould Birds of Great Britain",
+        "William Yarrell A History of British Birds",
+        "Naumann Naturgeschichte der Vögel Mitteleuropas",
+        "Francis Orpen Morris A History of British Birds",
+    ])
+    # Last-resort CC photo from Avicommons when no illustration is found. Off by
+    # default: photos clash with the plates and dither poorly on e-ink, and many
+    # are cc-by-nc (attribution required, written to <slug>.credit.json).
+    photo_fallback: bool = False
+    # Background auto-fetch (see platefetcher.py / web.py). Set auto_fetch:false
+    # to keep fetching a manual fetch_plates.py step.
+    auto_fetch: bool = True
+    auto_fetch_interval: int = 120  # seconds between polls for missing plates
 
 
 @dataclass
@@ -91,3 +113,14 @@ def load(path: str | None = None) -> Config:
 def plates_dir(cfg: Config) -> str:
     d = cfg.plates.dir
     return d if os.path.isabs(d) else os.path.join(cfg.root, d)
+
+
+def plate_sources(cfg: Config) -> list:
+    """Effective ordered list of illustration source suffixes. Prefers
+    plates.fetch_sources; falls back to the single fetch_query_suffix so older
+    configs keep working."""
+    srcs = [s for s in (cfg.plates.fetch_sources or []) if s and str(s).strip()]
+    if srcs:
+        return srcs
+    suffix = (cfg.plates.fetch_query_suffix or "").strip()
+    return [suffix] if suffix else []
