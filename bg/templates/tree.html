@@ -210,6 +210,32 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
   background: var(--ink); color: var(--paper); border: 0; padding: .45rem .8rem;
   margin: .5rem .4rem 0 0; cursor: pointer; }
 .dbg-panel .hint { margin: .4rem 0; font-style: normal; }
+
+/* ---- mobile: dock the callout, clear the floating Play control ---- */
+/* The leader-line card is fiddly when it's pinned beside a thumb-sized bird and
+   it overruns a narrow stage. On small screens the callout keeps its plate-mark
+   voice but docks to the foot of the screen as a full-width card, and the leader
+   line is dropped (there's nothing precise to point at on a tap). */
+@media (max-width: 700px) {
+  .callout .cl-svg { display: none; }
+  .callout--docked .callout-box {
+    position: fixed; left: .8rem; right: .8rem; bottom: .8rem;
+    top: auto; transform: none;
+    min-width: 0; max-width: none; width: auto;
+    z-index: 320; pointer-events: auto;
+    padding: .7rem .9rem .8rem; box-shadow: 0 4px 18px rgba(60,48,28,.28);
+  }
+  .callout--docked .cl-name  { font-size: 1.12rem; }
+  .callout--docked .cl-latin { font-size: 1.02rem; }
+  .callout--docked .cl-data  { font-size: .72rem; }
+  .callout--docked .cl-dismiss { display: block; }
+
+  /* keep the centred masthead clear of the fixed top-left Play control */
+  .masthead { padding-top: 2.4rem; }
+}
+.cl-dismiss { display: none; margin: .5rem 0 0; text-align: right;
+  font-family: var(--mono); font-size: .6rem; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--data); opacity: .7; }
 </style>
 </head>
 <body>
@@ -271,6 +297,8 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
   var refresh = {{ refresh | default(60) | int }};
   var debug   = stage.hasAttribute("data-debug");
   var lastEntries = [];   // most recent frame, so autoplay knows who's singable
+  var pinnedEntry = null; // bird whose callout a tap has pinned open (touch)
+  var calloutEntry = null;// whose callout is currently shown (for re-layout on rotate)
   var songIndex = {};     // sci(lowercased) -> {song_url, song_credit, ...}, from songs/index.json
 
   // optional ?blend=multiply for haloed cutouts
@@ -303,6 +331,7 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
   stage.appendChild(notesLayer);
 
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function docked() { return window.matchMedia("(max-width: 700px)").matches; }
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
@@ -315,6 +344,7 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
 
   function showCallout(e) {
     try {
+    calloutEntry = e;
     var vis = e.vis_h || e.bird_h || 8;
     var sx = e.x;                                  // leader's bird end (the dot)
     var sy = clamp(e.y - vis * 0.55, 7, 92);       // up around the bird's body
@@ -339,16 +369,25 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
         + dataRow("Seen", seen)
         + dataRow("Last heard", e.last_heard_text || "—")
         + (e.song_credit ? dataRow("Song", "rec. " + e.song_credit) : "")
-      + "</div>";
+      + "</div>"
+      + '<div class="cl-dismiss">Tap to close</div>';
 
-    clBox.style.top = ay + "%";
-    clBox.style.transform = "translateY(-50%)";
-    if (side > 0) { clBox.style.left = ax + "%"; clBox.style.right = "auto"; }
-    else { clBox.style.right = (100 - ax) + "%"; clBox.style.left = "auto"; }
+    if (docked()) {
+      callout.classList.add("callout--docked");
+      clBox.style.top = clBox.style.bottom = clBox.style.left =
+        clBox.style.right = clBox.style.transform = "";   // CSS owns the docked layout
+    } else {
+      callout.classList.remove("callout--docked");
+      clBox.style.bottom = "";
+      clBox.style.top = ay + "%";
+      clBox.style.transform = "translateY(-50%)";
+      if (side > 0) { clBox.style.left = ax + "%"; clBox.style.right = "auto"; }
+      else { clBox.style.right = (100 - ax) + "%"; clBox.style.left = "auto"; }
+    }
     callout.classList.add("show");
     } catch (err) { /* never let a bad field kill the hover card */ }
   }
-  function hideCallout() { callout.classList.remove("show"); }
+  function hideCallout() { callout.classList.remove("show"); calloutEntry = null; }
 
   // --- songs: match cached recordings to birds in the browser ------------
   // The page reads songs/index.json itself and stamps song_url onto each entry
@@ -410,9 +449,9 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
         if (e.song_url) img.classList.add("bird--has-song");
         img.addEventListener("mouseenter", function () { showCallout(e); });
         img.addEventListener("mouseleave", function () {
-          if (clickCurrent !== e) hideCallout();   // keep the name up while it sings
+          if (clickCurrent !== e && pinnedEntry !== e) hideCallout();  // keep pinned/singing up
         });
-        img.addEventListener("click", function () { playOne(e); });
+        img.addEventListener("click", function () { onBirdTap(e); });
       }
 
       if (debug && e.rank != null && e.rank >= 0) {
@@ -566,6 +605,7 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
   }
   function start() {
     stopClickPlay();          // the tour takes over from any single-bird play
+    pinnedEntry = null;
     var list = singable();
     if (!list.length) { flashNoSongs(); return; }
     queue = shuffle(list);
@@ -642,6 +682,65 @@ footer p { font-style: italic; color: var(--ink-soft); font-size: .95rem; margin
   }
   clickAudio.addEventListener("ended", stopClickPlay);
   clickAudio.addEventListener("error", function () { if (clickCurrent) stopClickPlay(); });
+
+  // --- touch-friendly inspection -----------------------------------------
+  // A tap shows the callout for ANY bird (the hover-only path left silent birds
+  // mute on touch). Singers also play, as before. Tapping the same bird, the
+  // background, or the card closes it. On a crowded little tree, a tap that just
+  // misses still grabs the nearest bird within a fingertip's reach.
+  function onBirdTap(e) {
+    if (playing) return;                              // the tour owns the stage
+    if (e && e.song_url) {
+      playOne(e);                                     // toggles song + notes + callout
+      pinnedEntry = (clickCurrent === e) ? e : null;
+    } else if (e) {                                   // silent bird: pin/unpin its card
+      if (pinnedEntry === e) { pinnedEntry = null; stopClickPlay(); }
+      else { stopClickPlay(); pinnedEntry = e; showCallout(e); }
+    }
+  }
+
+  function nearestBird(ev) {
+    if (!window.matchMedia("(pointer: coarse)").matches) return null;
+    if (!lastEntries || !lastEntries.length) return null;
+    var b = stage.getBoundingClientRect();
+    var px = ev.clientX - b.left, py = ev.clientY - b.top;
+    var R = Math.max(28, b.width * 0.06);             // a forgiving fingertip radius
+    var best = null, bestD = Infinity;
+    lastEntries.forEach(function (e) {
+      if (!e || !e._img) return;
+      var vis = e.vis_h || e.bird_h || 8;
+      var cx = (e.x / 100) * b.width;
+      var cy = ((e.y - vis * 0.3) / 100) * b.height;  // aim at the body, not the feet
+      var d = Math.hypot(px - cx, py - cy);
+      if (d < bestD) { bestD = d; best = e; }
+    });
+    return bestD <= R ? best : null;
+  }
+
+  // background tap: select a near-miss bird, else dismiss whatever's open
+  stage.addEventListener("click", function (ev) {
+    if (debug) return;
+    if (ev.target.closest(".bird, .callout, .autoplay-btn")) return;
+    var e = nearestBird(ev);
+    if (e) { onBirdTap(e); return; }
+    if (!playing) { pinnedEntry = null; stopClickPlay(); }
+  });
+
+  // tapping the docked card closes it (and doesn't fall through to the stage)
+  clBox.addEventListener("click", function (ev) {
+    ev.stopPropagation();
+    if (playing) return;
+    pinnedEntry = null; stopClickPlay();
+  });
+
+  // rotate / resize: re-lay the open callout so docked<->pinned stays correct
+  var rzTimer = null;
+  window.addEventListener("resize", function () {
+    clearTimeout(rzTimer);
+    rzTimer = setTimeout(function () {
+      if (calloutEntry && callout.classList.contains("show")) showCallout(calloutEntry);
+    }, 150);
+  });
 
   // --- boot --------------------------------------------------------------
   var d = new Date();

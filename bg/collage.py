@@ -53,6 +53,10 @@ class CollageOpts:
     generated_dir: str = "illustrations/generated"
     font_dir: str = "fonts"
     title: str = "Heard Today"
+    show_header: bool = True       # masthead: title / counts / date / rule
+    show_latin: bool = True        # scientific-name line under each bird
+    show_meta: bool = True         # count / last-heard / rarity line under each bird
+    sort: str = "recent"           # recent | rarest  — order birds appear left-to-right, top-to-bottom
     # specimen-plate layout
     specimen_hero: int = 124      # height of the central, most-recent bird
     specimen_fill: float = 1.0    # 0..1.1 — initial spread before relaxation
@@ -167,6 +171,16 @@ def _row_plan(opts):
     and count (2 vs 3), not from cramming. Tall cutouts keep their height
     because a justified row with fewer/narrower birds grows taller."""
     b = opts.body_h
+    if opts.width > opts.height:
+        # Landscape: a short, wide canvas wants fewer but wider rows. 3·4·5
+        # sums to the default count of 12 so no bird is stranded alone on a
+        # final row, and the back row stays the small/dense one — the same
+        # rhythm as portrait, turned on its side.
+        return [
+            (opts.hero_h, 3),       # featured trio, large
+            (int(b * 1.00), 4),
+            (int(b * 0.86), 5),     # smaller, denser back row
+        ]
     return [
         (opts.hero_h, 2),       # featured: the two most-recent, large
         (int(b * 0.95), 3),
@@ -200,8 +214,10 @@ def _pack_rows(items, content_w, opts):
 def _finalize(items, sum_asp, content_w, target, opts, last=False):
     avail = content_w - opts.gutter * (len(items) - 1)
     row_h = avail / sum_asp
-    # clamp so a sparse row doesn't balloon and a dense one doesn't vanish
-    row_h = max(opts.min_cut_h, min(row_h, target * 1.35))
+    # clamp so a sparse row doesn't balloon and a dense one doesn't vanish.
+    # A looser ceiling lets a justified row keep the height it needs to fill
+    # the width, which removes the side whitespace from over-clamped rows.
+    row_h = max(opts.min_cut_h, min(row_h, target * 1.7))
     if last:
         row_h = min(row_h, target)        # don't stretch a lonely last row
     placed = [{**it, "h": row_h, "w": row_h * it["asp"]} for it in items]
@@ -209,28 +225,45 @@ def _finalize(items, sum_asp, content_w, target, opts, last=False):
 
 
 def _layout(items, opts, avail_h):
-    """Pack, then shrink target heights until the stack fits the panel."""
+    """Pack, then grow OR shrink target heights until the stack fills avail_h
+    (not just fits it) — so a short set doesn't leave the bottom empty."""
     content_w = opts.width - 2 * opts.margin
     hero, body = opts.hero_h, opts.body_h
-    for _ in range(12):
+    rows = _pack_rows(items, content_w, opts)
+    total = 0
+    for _ in range(28):
         o = CollageOpts(**{**opts.__dict__, "hero_h": hero, "body_h": body})
         rows = _pack_rows(items, content_w, o)
-        total = sum(r["h"] for r in rows) + LABEL_H * len(rows) \
+        total = sum(r["h"] for r in rows) + _caption_h(opts) * len(rows) \
                 + opts.row_gap * (len(rows) - 1)
-        if total <= avail_h or body <= opts.min_cut_h:
-            return rows, total
-        hero *= 0.93
-        body *= 0.93
+        if abs(total - avail_h) <= 6 or body <= opts.min_cut_h:
+            break
+        f = 0.94 if total > avail_h else 1.06
+        hero *= f
+        body *= f
     return rows, total
 
 
-LABEL_H = 44   # vertical budget reserved under each row for the caption block
+LABEL_H = 44   # caption budget WITH the Latin line
+
+
+def _caption_h(opts):
+    """Vertical room reserved under each row for its caption block; tighter as
+    the Latin and meta lines are hidden (common-name-only = smallest)."""
+    h = 30                              # common name, up to 2 lines
+    if opts.show_latin:
+        h += 9
+    if opts.show_meta:
+        h += 5
+    return h
 
 
 # ---------------------------------------------------------------- caption ----
-def _draw_caption(draw, fonts, cx, top, cell_w, entry):
-    """Common name (tracked caps, <=2 lines), Latin italic, meta line."""
-    caps = fonts.get(13, weight=600)
+def _draw_caption(draw, fonts, cx, top, cell_w, entry, show_latin=True,
+                  show_meta=True):
+    """Common name (tracked caps, <=2 lines), optional Latin italic, optional
+    meta line (count / last-heard / rarity)."""
+    caps = fonts.get(15, weight=600)
     tracking = 1.4
     cap_w = cell_w + 10      # allow a little bleed past a narrow cutout
     lines = _wrap_caps(draw, entry["common"], caps, tracking, cap_w)
@@ -239,10 +272,13 @@ def _draw_caption(draw, fonts, cx, top, cell_w, entry):
         _draw_tracked(draw, 0, y, ln, caps, INK, tracking, anchor_center=cx)
         y += 15
 
-    lat = _fit_italic(draw, fonts, entry["latin"], cap_w)
-    draw.text((cx, y + 1), entry["latin"], font=lat, fill=INK_SOFT, anchor="ma")
-    y += lat.size + 3
+    if show_latin:
+        lat = _fit_italic(draw, fonts, entry["latin"], cap_w)
+        draw.text((cx, y + 1), entry["latin"], font=lat, fill=INK_SOFT, anchor="ma")
+        y += lat.size + 3
 
+    if not show_meta:
+        return
     # meta: "4× · 2h ago · rare"  (rarity coloured by level)
     meta = fonts.get(11, weight=500)
     rstyle = RARITY_STYLE.get(entry.get("rarity_level", ""), None)
@@ -275,6 +311,21 @@ def _draw_header(draw, fonts, opts, n_species, n_calls, date_str):
 def _collect(entries, opts):
     """entries -> list of plain dicts with loaded, trimmed cutouts (missing
     cutouts dropped). Shared by both the collage and specimen layouts."""
+    # Rarity rank: lower number = displayed first.
+    _RARITY_RANK = {"rare": 0, "uncommon": 1, "common": 2, "": 3}
+
+    if opts.sort == "rarest":
+        entries = sorted(
+            entries,
+            key=lambda e: _RARITY_RANK.get(
+                (getattr(e, "rarity_level", None)
+                 or (e.get("rarity_level", "") if isinstance(e, dict) else "")
+                 or ""),
+                3,
+            ),
+        )
+    # "recent" keeps the arrival order that build_gallery() already provides.
+
     items = []
     for e in entries[:opts.count]:
         sci = getattr(e, "scientific_name", "") or (
@@ -305,8 +356,11 @@ def render_collage(entries, opts: CollageOpts | None = None,
 
     items = _collect(entries, opts)
 
-    n_calls = sum(int(it["count"]) for it in items)
-    top = _draw_header(draw, fonts, opts, len(items), n_calls, date_str)
+    if opts.show_header:
+        n_calls = sum(int(it["count"]) for it in items)
+        top = _draw_header(draw, fonts, opts, len(items), n_calls, date_str)
+    else:
+        top = opts.margin
 
     rows, _ = _layout(items, opts, opts.height - top - opts.margin)
 
@@ -321,14 +375,15 @@ def render_collage(entries, opts: CollageOpts | None = None,
             w, h = int(it["w"]), int(r["h"])
             sprite = it["img"].resize((max(1, w), max(1, h)), Image.LANCZOS)
             canvas.paste(sprite, (int(x), int(baseline - h)), sprite)
-            _draw_caption(draw, fonts, x + w / 2, baseline + 6, w, it)
+            _draw_caption(draw, fonts, x + w / 2, baseline + 6, w, it,
+                          show_latin=opts.show_latin, show_meta=opts.show_meta)
             x += w + opts.gutter
-        y = baseline + LABEL_H + opts.row_gap
+        y = baseline + _caption_h(opts) + opts.row_gap
 
-    # baseline footer rule + timestamp
-    fy = opts.height - opts.margin + 2
-    draw.line([(opts.margin, fy - 16), (opts.width - opts.margin, fy - 16)],
-              fill=HAIRLINE, width=1)
+    if opts.show_header:                       # footer rule belongs with the masthead
+        fy = opts.height - opts.margin + 2
+        draw.line([(opts.margin, fy - 16), (opts.width - opts.margin, fy - 16)],
+                  fill=HAIRLINE, width=1)
     return canvas
 
 
@@ -352,12 +407,16 @@ def render(entries, cfg) -> Image.Image:
     """Adapter for bg/eink.py. Dispatches on cfg.eink.layout ("collage" or
     "specimen"); reads optional knobs off cfg.eink with safe defaults."""
     e = getattr(cfg, "eink", None)
+    pw, ph = getattr(e, "width", 800), getattr(e, "height", 480)
     opts = CollageOpts(
-        width=getattr(e, "width", 480),
-        height=getattr(e, "height", 800),
+        width=max(pw, ph), height=min(pw, ph),     # collage is landscape
         count=getattr(e, "collage_count", 12),
         generated_dir=getattr(e, "generated_dir", "illustrations/generated"),
         font_dir=getattr(cfg, "font_dir", "fonts"),
+        show_header=getattr(e, "collage_header", True),
+        show_latin=getattr(e, "collage_latin", True),
+        show_meta=getattr(e, "collage_meta", True),
+        sort=getattr(e, "collage_sort", "recent"),
     )
     if getattr(e, "layout", "collage") == "specimen":
         return render_specimen(entries, opts)

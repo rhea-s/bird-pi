@@ -45,12 +45,14 @@ web:
   refresh_seconds: 60      # how often the page re-pulls detections
 
 eink:
-  width: 800               # panel resolution in px
-  height: 480
-  palette: "bw"            # bw | gray16 | acep7  (acep7 = 7-colour panels)
-  columns: 3               # gallery grid
-  rows: 2
-  driver: "save"           # save | waveshare | inky   (start with "save")
+  width: 480               # collage is portrait; push() rotates to the 800×480 panel
+  height: 800
+  layout: "collage"        # grid | collage | specimen
+  palette: "rgb"           # bw | gray16 | acep7 | rgb  (rgb = passthrough; let Inky dither)
+  saturation: 0.6          # inky driver only; raise for punchier e-ink colour (0..1)
+  columns: 3               # gallery grid (grid layout only)
+  rows: 2                  # gallery grid (grid layout only)
+  driver: "save"           # save | waveshare | inky   (keep on save until the preview looks right)
   output_png: "eink_out.png"
   # Only used when driver: waveshare. Match your panel's driver module.
   waveshare_module: "waveshare_epd.epd7in5_V2"

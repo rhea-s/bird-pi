@@ -74,6 +74,12 @@ def _center(draw, text, font, cx, y, fill):
 
 def render(entries: list[GalleryEntry], cfg: cfgmod.Config) -> Image.Image:
     e = cfg.eink
+    # Dispatch to the collage/specimen renderer when configured; the grid
+    # renderer below is the default and is otherwise left untouched.
+    layout = getattr(e, "layout", "grid")
+    if layout in ("collage", "specimen"):
+        from . import collage as collagemod
+        return collagemod.render(entries, cfg)   # RGB; portrait if cfg.eink is
     W, H = e.width, e.height
     INK = (40, 36, 27)
     SOFT = (90, 78, 60)
@@ -188,7 +194,18 @@ def push(img: Image.Image, cfg: cfgmod.Config) -> None:
         try:
             from inky.auto import auto
             inky = auto()
-            inky.set_image(img.convert("RGB"))
+            out = img
+            # The collage composes portrait (e.g. 480×800) but the panel is
+            # landscape (800×480). Rotate only when our image is the panel's
+            # dims transposed, so the grid layout (already landscape) is left
+            # alone. Flip to 270 if the result hangs upside-down in the frame.
+            if (out.width, out.height) == (inky.height, inky.width) \
+                    and inky.width != inky.height:
+                out = out.rotate(90, expand=True)
+            # Hand the Inky library RGB and let it dither to the panel's inks;
+            # bump saturation because e-ink reads flatter than a monitor.
+            inky.set_image(out.convert("RGB"),
+                           saturation=getattr(e, "saturation", 0.6))
             inky.show()
             print("Pushed to Inky panel.")
         except Exception as exc:

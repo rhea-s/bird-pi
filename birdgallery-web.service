@@ -1,0 +1,14 @@
+[Unit]
+Description=Birdgallery Web Server
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/birdgallery
+ExecStart=/home/pi/.virtualenvs/pimoroni/bin/python run_web.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
