@@ -70,6 +70,21 @@ class EinkCfg:
     driver: str = "save"
     output_png: str = "eink_out.png"
     waveshare_module: str = "waveshare_epd.epd7in5_V2"
+    # --- layout selection + shared ---
+    layout: str = "grid"            # grid | plates | collage | specimen
+    saturation: float = 0.6         # inky driver: dither saturation (0..1)
+    generated_dir: str = "illustrations/generated"   # transparent cutouts (collage)
+    # --- plates layout ---
+    plate_cols: int = 2             # plates grid: columns (2×2 = four plates)
+    plate_rows: int = 2             # plates grid: rows
+    plate_cycle: bool = False       # advance through recent birds each refresh
+    plate_trim: bool = True         # crop paper margins so the bird fills the cell
+    # --- collage layout ---
+    collage_count: int = 12         # birds drawn in the collage
+    collage_header: bool = True     # "Heard Today" / date masthead
+    collage_latin: bool = True      # scientific-name line under each bird
+    collage_meta: bool = True       # count / last-heard / rarity line under each bird
+    collage_sort: str = "recent"    # recent | rarest
 
 
 @dataclass
